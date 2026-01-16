@@ -1,0 +1,112 @@
+[package]
+name = "codexbar"
+version = "0.1.0"
+edition = "2021"
+authors = ["CodexBar Contributors"]
+description = "Windows system tray app for monitoring AI provider usage limits"
+license = "MIT"
+repository = "https://github.com/example/win-codexbar"
+keywords = ["ai", "usage", "monitoring", "claude", "codex"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "cookies", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async utilities
+async-trait = "0.1"
+futures = "0.3"
+
+# System tray (Windows)
+tray-icon = "0.19"
+# muda version must match what tray-icon uses
+muda = "0.15"
+# Channel for menu events
+crossbeam-channel = "0.5"
+# Window event loop for proper message pumping
+winit = "0.30"
+
+# Windows-specific
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security_Credentials",
+    "Win32_Security_Cryptography",
+    "Win32_System_Memory",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# SQLite for reading browser cookies
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Encryption for cookie decryption
+aes-gcm = "0.10"
+base64 = "0.22"
+
+# Secure credential storage
+keyring = "3"
+
+# Directory paths
+directories = "6"
+
+# URL handling
+url = "2"
+
+# UUID generation
+uuid = { version = "1", features = ["v4"] }
+
+# Regex (lite version for simple matching)
+regex-lite = "0.1"
+
+# Which - find executables in PATH
+which = "7"
+
+# Dirs - standard directories
+dirs = "6"
+
+# Open URLs in browser
+open = "5"
+
+# Tauri for GUI
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[[bin]]
+name = "codexbar"
+path = "src/main.rs"
