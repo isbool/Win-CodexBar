@@ -12,6 +12,7 @@ pub mod factory;
 pub mod gemini;
 pub mod kiro;
 pub mod minimax;
+pub mod opencode;
 pub mod vertexai;
 pub mod zai;
 
@@ -26,5 +27,6 @@ pub use factory::FactoryProvider;
 pub use gemini::GeminiProvider;
 pub use kiro::KiroProvider;
 pub use minimax::MiniMaxProvider;
+pub use opencode::OpenCodeProvider;
 pub use vertexai::VertexAIProvider;
 pub use zai::ZaiProvider;
