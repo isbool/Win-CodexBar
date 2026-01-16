@@ -12,6 +12,7 @@ mod logging;
 mod notifications;
 mod providers;
 mod settings;
+mod single_instance;
 mod status;
 mod tauri_app;
 mod tray;
@@ -66,6 +67,15 @@ fn run() -> i32 {
             })
         }
         Some(Commands::Menubar) => {
+            // Check for existing instance
+            let _guard = match single_instance::SingleInstanceGuard::try_acquire() {
+                Some(guard) => guard,
+                None => {
+                    eprintln!("CodexBar is already running. Check your system tray.");
+                    return exit_codes::SUCCESS; // Not an error, just exit gracefully
+                }
+            };
+
             // Launch the Tauri-based menu bar GUI
             match tauri_app::run() {
                 Ok(()) => exit_codes::SUCCESS,
