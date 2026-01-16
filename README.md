@@ -15,7 +15,7 @@ A Windows port of [CodexBar](https://github.com/steipete/CodexBar) - the tiny me
 
 ## Screenshot
 
-![CodexBar Windows](codexbar-windows.png)
+![CodexBar Windows](screenshot.png)
 
 ## Install
 
