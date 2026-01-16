@@ -32,3 +32,16 @@ docs/*-analysis.md
 # Swift Package Manager metadata (leave sources tracked)
 # Packages/
 # Package.resolved
+
+# Rust build artifacts
+rust/target/
+
+# Claude temp files
+tmpclaude-*
+.claude/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
