@@ -1,6 +1,6 @@
 //! Tray icon types
 //!
-//! Provides usage level and badge types for tray icon rendering
+//! Provides usage level, badge types, and loading animations for tray icon rendering
 
 /// Usage status level for icon color
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -48,6 +48,86 @@ pub enum BadgeType {
     Incident,
     /// No badge
     None,
+}
+
+/// Loading animation patterns for tray icon
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum LoadingPattern {
+    /// Knight Rider style - ping-pong sweep
+    #[default]
+    KnightRider,
+    /// Cylon style - sawtooth linear
+    Cylon,
+    /// Outside-In - high at edges, dips in center
+    OutsideIn,
+    /// Race - fast linear fill
+    Race,
+    /// Pulse - throb between 40-100%
+    Pulse,
+}
+
+impl LoadingPattern {
+    /// Calculate fill percentage for a given phase (0.0-1.0)
+    pub fn value(&self, phase: f64) -> f64 {
+        let phase = phase.fract(); // Ensure 0.0-1.0
+        match self {
+            LoadingPattern::KnightRider => {
+                // Ping-pong: 0->100->0
+                let t = (phase * 2.0).min(2.0 - phase * 2.0);
+                t * 100.0
+            }
+            LoadingPattern::Cylon => {
+                // Linear sawtooth: 0->100
+                phase * 100.0
+            }
+            LoadingPattern::OutsideIn => {
+                // Sinusoidal: high at edges
+                ((phase * std::f64::consts::PI * 2.0).cos() * 0.5 + 0.5) * 100.0
+            }
+            LoadingPattern::Race => {
+                // Fast sawtooth with easing
+                let t = phase * phase; // Ease in
+                t * 100.0
+            }
+            LoadingPattern::Pulse => {
+                // Throb between 40-100%
+                let t = (phase * std::f64::consts::PI * 2.0).sin() * 0.5 + 0.5;
+                40.0 + t * 60.0
+            }
+        }
+    }
+
+    /// Get secondary bar offset (to make it animate differently)
+    pub fn secondary_offset(&self) -> f64 {
+        match self {
+            LoadingPattern::KnightRider => 0.25,
+            LoadingPattern::Cylon => 0.15,
+            LoadingPattern::OutsideIn => 0.5,
+            LoadingPattern::Race => 0.2,
+            LoadingPattern::Pulse => 0.3,
+        }
+    }
+
+    /// Get all available patterns
+    pub fn all() -> &'static [LoadingPattern] {
+        &[
+            LoadingPattern::KnightRider,
+            LoadingPattern::Cylon,
+            LoadingPattern::OutsideIn,
+            LoadingPattern::Race,
+            LoadingPattern::Pulse,
+        ]
+    }
+
+    /// Get a random pattern
+    pub fn random() -> Self {
+        let patterns = Self::all();
+        let idx = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as usize) % patterns.len();
+        patterns[idx]
+    }
 }
 
 #[cfg(test)]
