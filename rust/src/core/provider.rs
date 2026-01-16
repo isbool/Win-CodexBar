@@ -24,6 +24,7 @@ pub enum ProviderId {
     Kiro,
     VertexAI,
     Augment,
+    OpenCode,
 }
 
 impl ProviderId {
@@ -42,6 +43,7 @@ impl ProviderId {
             ProviderId::Kiro,
             ProviderId::VertexAI,
             ProviderId::Augment,
+            ProviderId::OpenCode,
         ]
     }
 
@@ -60,6 +62,7 @@ impl ProviderId {
             ProviderId::Kiro => "kiro",
             ProviderId::VertexAI => "vertexai",
             ProviderId::Augment => "augment",
+            ProviderId::OpenCode => "opencode",
         }
     }
 
@@ -78,6 +81,7 @@ impl ProviderId {
             ProviderId::Kiro => "Kiro",
             ProviderId::VertexAI => "Vertex AI",
             ProviderId::Augment => "Augment",
+            ProviderId::OpenCode => "OpenCode",
         }
     }
 
@@ -96,6 +100,7 @@ impl ProviderId {
             "kiro" | "aws" => Some(ProviderId::Kiro),
             "vertexai" | "vertex" => Some(ProviderId::VertexAI),
             "augment" => Some(ProviderId::Augment),
+            "opencode" => Some(ProviderId::OpenCode),
             _ => None,
         }
     }
@@ -319,7 +324,7 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 12);
+        assert_eq!(all.len(), 13);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
     }
