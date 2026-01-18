@@ -5,10 +5,10 @@ use serde::Serialize;
 
 use crate::core::{FetchContext, ProviderId, Provider, ProviderFetchResult, SourceMode};
 use crate::providers::{
-    AntigravityProvider, AugmentProvider, ClaudeProvider, CodexProvider,
+    AmpProvider, AntigravityProvider, AugmentProvider, ClaudeProvider, CodexProvider,
     CopilotProvider, CursorProvider, FactoryProvider, GeminiProvider,
     KimiProvider, KimiK2Provider, KiroProvider, MiniMaxProvider, OpenCodeProvider,
-    VertexAIProvider, ZaiProvider,
+    SyntheticProvider, VertexAIProvider, ZaiProvider,
 };
 use crate::status::{fetch_provider_status, ProviderStatus as StatusInfo, StatusLevel};
 
@@ -150,6 +150,8 @@ fn create_provider(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::OpenCode => Box::new(OpenCodeProvider::new()),
         ProviderId::Kimi => Box::new(KimiProvider::new()),
         ProviderId::KimiK2 => Box::new(KimiK2Provider::new()),
+        ProviderId::Amp => Box::new(AmpProvider::new()),
+        ProviderId::Synthetic => Box::new(SyntheticProvider::new()),
     }
 }
 

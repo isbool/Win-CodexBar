@@ -27,6 +27,8 @@ pub enum ProviderId {
     OpenCode,
     Kimi,
     KimiK2,
+    Amp,
+    Synthetic,
 }
 
 impl ProviderId {
@@ -48,6 +50,8 @@ impl ProviderId {
             ProviderId::OpenCode,
             ProviderId::Kimi,
             ProviderId::KimiK2,
+            ProviderId::Amp,
+            ProviderId::Synthetic,
         ]
     }
 
@@ -69,6 +73,8 @@ impl ProviderId {
             ProviderId::OpenCode => "opencode",
             ProviderId::Kimi => "kimi",
             ProviderId::KimiK2 => "kimik2",
+            ProviderId::Amp => "amp",
+            ProviderId::Synthetic => "synthetic",
         }
     }
 
@@ -90,6 +96,8 @@ impl ProviderId {
             ProviderId::OpenCode => "OpenCode",
             ProviderId::Kimi => "Kimi",
             ProviderId::KimiK2 => "Kimi K2",
+            ProviderId::Amp => "Amp",
+            ProviderId::Synthetic => "Synthetic",
         }
     }
 
@@ -111,6 +119,8 @@ impl ProviderId {
             "opencode" => Some(ProviderId::OpenCode),
             "kimi" | "moonshot" => Some(ProviderId::Kimi),
             "kimik2" | "kimi-k2" | "k2" => Some(ProviderId::KimiK2),
+            "amp" | "sourcegraph" => Some(ProviderId::Amp),
+            "synthetic" => Some(ProviderId::Synthetic),
             _ => None,
         }
     }
@@ -324,6 +334,7 @@ pub fn cli_name_map() -> HashMap<&'static str, ProviderId> {
     map.insert("zed", ProviderId::Zai);
     map.insert("aws", ProviderId::Kiro);
     map.insert("vertex", ProviderId::VertexAI);
+    map.insert("sourcegraph", ProviderId::Amp);
     map
 }
 
@@ -334,11 +345,13 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 15);
+        assert_eq!(all.len(), 17); // 15 + 2 new providers (Amp, Synthetic)
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Kimi));
         assert!(all.contains(&ProviderId::KimiK2));
+        assert!(all.contains(&ProviderId::Amp));
+        assert!(all.contains(&ProviderId::Synthetic));
     }
 
     #[test]

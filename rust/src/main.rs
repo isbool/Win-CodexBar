@@ -71,22 +71,23 @@ fn run() -> i32 {
             })
         }
         Some(Commands::Menubar) => {
+            // Hide the console window for GUI mode
+            #[cfg(windows)]
+            hide_console_window();
+
             // Check for existing instance
             let _guard = match single_instance::SingleInstanceGuard::try_acquire() {
                 Some(guard) => guard,
                 None => {
-                    eprintln!("CodexBar is already running. Check your system tray.");
-                    return exit_codes::SUCCESS; // Not an error, just exit gracefully
+                    // Can't print to console anymore, just exit
+                    return exit_codes::SUCCESS;
                 }
             };
 
             // Launch the native egui menu bar GUI
             match native_ui::run() {
                 Ok(()) => exit_codes::SUCCESS,
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    exit_codes::UNEXPECTED_FAILURE
-                }
+                Err(_) => exit_codes::UNEXPECTED_FAILURE,
             }
         }
         Some(Commands::Autostart(args)) => {
@@ -128,5 +129,19 @@ fn categorize_error(e: &anyhow::Error) -> i32 {
         exit_codes::CLI_TIMEOUT
     } else {
         exit_codes::UNEXPECTED_FAILURE
+    }
+}
+
+/// Hide the console window on Windows (for GUI mode)
+#[cfg(windows)]
+fn hide_console_window() {
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+
+    unsafe {
+        let console = GetConsoleWindow();
+        if !console.is_invalid() {
+            let _ = ShowWindow(console, SW_HIDE);
+        }
     }
 }

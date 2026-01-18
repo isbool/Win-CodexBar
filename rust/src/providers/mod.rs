@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+pub mod amp;
 pub mod antigravity;
 pub mod augment;
 pub mod claude;
@@ -15,10 +16,12 @@ pub mod kimik2;
 pub mod kiro;
 pub mod minimax;
 pub mod opencode;
+pub mod synthetic;
 pub mod vertexai;
 pub mod zai;
 
 // Re-export provider implementations
+pub use amp::AmpProvider;
 pub use antigravity::AntigravityProvider;
 pub use augment::AugmentProvider;
 pub use claude::ClaudeProvider;
@@ -32,5 +35,6 @@ pub use kimik2::KimiK2Provider;
 pub use kiro::KiroProvider;
 pub use minimax::MiniMaxProvider;
 pub use opencode::OpenCodeProvider;
+pub use synthetic::SyntheticProvider;
 pub use vertexai::VertexAIProvider;
 pub use zai::ZaiProvider;

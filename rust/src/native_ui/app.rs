@@ -526,6 +526,8 @@ fn create_provider(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::OpenCode => Box::new(OpenCodeProvider::new()),
         ProviderId::Kimi => Box::new(KimiProvider::new()),
         ProviderId::KimiK2 => Box::new(KimiK2Provider::new()),
+        ProviderId::Amp => Box::new(AmpProvider::new()),
+        ProviderId::Synthetic => Box::new(SyntheticProvider::new()),
     }
 }
 

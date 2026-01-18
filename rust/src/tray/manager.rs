@@ -12,20 +12,22 @@ use super::icon::{LoadingPattern, UsageLevel};
 
 const ICON_SIZE: u32 = 32;
 
-/// Surprise animation types
+/// Surprise animation types (matching macOS CodexBar)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SurpriseAnimation {
     /// No animation
     #[allow(dead_code)]
     None,
-    /// Bars flash bright white briefly
+    /// Bars flash bright white briefly (like eyes blinking)
     Blink,
-    /// Bars wiggle left/right
+    /// Bars wiggle left/right (Claude arms/legs effect)
     Wiggle,
     /// Bars pulse in intensity
     Pulse,
     /// Rainbow color sweep
     Rainbow,
+    /// Icon tilts slightly (Codex hat tilt effect)
+    Tilt,
 }
 
 impl SurpriseAnimation {
@@ -33,11 +35,12 @@ impl SurpriseAnimation {
     pub fn random() -> Self {
         use rand::Rng;
         let mut rng = rand::rng();
-        match rng.random_range(0..4) {
+        match rng.random_range(0..5) {
             0 => SurpriseAnimation::Blink,
             1 => SurpriseAnimation::Wiggle,
             2 => SurpriseAnimation::Pulse,
-            _ => SurpriseAnimation::Rainbow,
+            3 => SurpriseAnimation::Rainbow,
+            _ => SurpriseAnimation::Tilt,
         }
     }
 
@@ -49,6 +52,7 @@ impl SurpriseAnimation {
             SurpriseAnimation::Wiggle => 20,   // Shake back and forth
             SurpriseAnimation::Pulse => 30,    // Slow pulse
             SurpriseAnimation::Rainbow => 40,  // Color sweep
+            SurpriseAnimation::Tilt => 24,     // Tilt and return
         }
     }
 }
@@ -593,8 +597,8 @@ fn create_surprise_icon(animation: SurpriseAnimation, frame: u32, session_percen
     let progress = frame as f64 / total_frames as f64;
 
     // Color and position modifiers based on animation type
-    let (color_mod, x_offset) = match animation {
-        SurpriseAnimation::None => ((1.0, 1.0, 1.0), 0i32),
+    let (color_mod, x_offset, y_offset) = match animation {
+        SurpriseAnimation::None => ((1.0, 1.0, 1.0), 0i32, 0i32),
         SurpriseAnimation::Blink => {
             // Flash to white and back
             let flash = if progress < 0.5 {
@@ -603,25 +607,32 @@ fn create_surprise_icon(animation: SurpriseAnimation, frame: u32, session_percen
                 (1.0 - progress) * 2.0  // Fade back
             };
             let blend = 1.0 + flash * 0.8;  // Boost brightness
-            ((blend, blend, blend), 0)
+            ((blend, blend, blend), 0, 0)
         }
         SurpriseAnimation::Wiggle => {
             // Shake left and right
             let shake = (progress * std::f64::consts::PI * 6.0).sin();  // 3 full oscillations
             let offset = (shake * 2.0) as i32;  // +/- 2 pixels
-            ((1.0, 1.0, 1.0), offset)
+            ((1.0, 1.0, 1.0), offset, 0)
         }
         SurpriseAnimation::Pulse => {
             // Gentle pulse - grow and shrink brightness
             let pulse = (progress * std::f64::consts::PI * 2.0).sin();  // One full cycle
             let intensity = 1.0 + pulse * 0.3;  // +/- 30% brightness
-            ((intensity, intensity, intensity), 0)
+            ((intensity, intensity, intensity), 0, 0)
         }
         SurpriseAnimation::Rainbow => {
             // Sweep through rainbow colors
             let hue = progress * 360.0;
             let (r, g, b) = hsv_to_rgb(hue, 0.8, 1.0);
-            ((r as f64 / 255.0 * 2.0, g as f64 / 255.0 * 2.0, b as f64 / 255.0 * 2.0), 0)
+            ((r as f64 / 255.0 * 2.0, g as f64 / 255.0 * 2.0, b as f64 / 255.0 * 2.0), 0, 0)
+        }
+        SurpriseAnimation::Tilt => {
+            // Tilt effect - slight diagonal shift that returns
+            let tilt = (progress * std::f64::consts::PI).sin();  // 0 -> 1 -> 0
+            let x_off = (tilt * 2.0) as i32;  // +2 pixels at peak
+            let y_off = (tilt * 1.0) as i32;  // +1 pixel at peak (slight diagonal)
+            ((1.0, 1.0, 1.0), x_off, y_off)
         }
     };
 
@@ -637,14 +648,16 @@ fn create_surprise_icon(animation: SurpriseAnimation, frame: u32, session_percen
     for y in 8..15 {
         for x in bar_left..bar_right {
             let adjusted_x = (x as i32 + x_offset).max(bar_left as i32).min(bar_right as i32 - 1) as u32;
-            img.put_pixel(adjusted_x, y, Rgba([80, 80, 90, 255]));
+            let adjusted_y = (y as i32 + y_offset).max(4).min(ICON_SIZE as i32 - 4) as u32;
+            img.put_pixel(adjusted_x, adjusted_y, Rgba([80, 80, 90, 255]));
         }
     }
     // Fill (colored with animation)
     for y in 8..15 {
         for x in bar_left..(bar_left + session_fill).min(bar_right) {
             let adjusted_x = (x as i32 + x_offset).max(bar_left as i32).min(bar_right as i32 - 1) as u32;
-            img.put_pixel(adjusted_x, y, Rgba([sr, sg, sb, 255]));
+            let adjusted_y = (y as i32 + y_offset).max(4).min(ICON_SIZE as i32 - 4) as u32;
+            img.put_pixel(adjusted_x, adjusted_y, Rgba([sr, sg, sb, 255]));
         }
     }
 
@@ -660,14 +673,16 @@ fn create_surprise_icon(animation: SurpriseAnimation, frame: u32, session_percen
     for y in 18..23 {
         for x in bar_left..bar_right {
             let adjusted_x = (x as i32 + x_offset).max(bar_left as i32).min(bar_right as i32 - 1) as u32;
-            img.put_pixel(adjusted_x, y, Rgba([80, 80, 90, 255]));
+            let adjusted_y = (y as i32 + y_offset).max(4).min(ICON_SIZE as i32 - 4) as u32;
+            img.put_pixel(adjusted_x, adjusted_y, Rgba([80, 80, 90, 255]));
         }
     }
     // Fill (colored with animation)
     for y in 18..23 {
         for x in bar_left..(bar_left + weekly_fill).min(bar_right) {
             let adjusted_x = (x as i32 + x_offset).max(bar_left as i32).min(bar_right as i32 - 1) as u32;
-            img.put_pixel(adjusted_x, y, Rgba([wr, wg, wb, 255]));
+            let adjusted_y = (y as i32 + y_offset).max(4).min(ICON_SIZE as i32 - 4) as u32;
+            img.put_pixel(adjusted_x, adjusted_y, Rgba([wr, wg, wb, 255]));
         }
     }
 

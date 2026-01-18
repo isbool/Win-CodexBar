@@ -66,6 +66,8 @@ pub enum LoadingPattern {
     Race,
     /// Pulse - throb between 40-100%
     Pulse,
+    /// Unbraid - morphing effect (logo -> bars)
+    Unbraid,
 }
 
 impl LoadingPattern {
@@ -96,6 +98,20 @@ impl LoadingPattern {
                 let t = (phase * std::f64::consts::PI * 2.0).sin() * 0.5 + 0.5;
                 40.0 + t * 60.0
             }
+            LoadingPattern::Unbraid => {
+                // Morphing effect - starts compressed, expands to full
+                // First half: bars grow from center outward
+                // Second half: bars settle to loading position
+                if phase < 0.5 {
+                    let expand = phase * 2.0;
+                    let ease = expand * expand * (3.0 - 2.0 * expand); // Smoothstep
+                    ease * 80.0
+                } else {
+                    let settle = (phase - 0.5) * 2.0;
+                    let ease = settle * settle * (3.0 - 2.0 * settle);
+                    80.0 + ease * 20.0 * (settle * std::f64::consts::PI * 4.0).sin().abs()
+                }
+            }
         }
     }
 
@@ -107,6 +123,7 @@ impl LoadingPattern {
             LoadingPattern::OutsideIn => 0.5,
             LoadingPattern::Race => 0.2,
             LoadingPattern::Pulse => 0.3,
+            LoadingPattern::Unbraid => 0.1,
         }
     }
 
@@ -118,6 +135,7 @@ impl LoadingPattern {
             LoadingPattern::OutsideIn,
             LoadingPattern::Race,
             LoadingPattern::Pulse,
+            LoadingPattern::Unbraid,
         ]
     }
 

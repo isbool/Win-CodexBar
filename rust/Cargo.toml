@@ -1,6 +1,6 @@
 [package]
 name = "codexbar"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["CodexBar Contributors"]
 description = "Windows system tray app for monitoring AI provider usage limits"
@@ -62,6 +62,7 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Security_Credentials",
     "Win32_Security_Cryptography",
+    "Win32_System_Console",
     "Win32_System_Memory",
     "Win32_System_Registry",
     "Win32_System_Threading",
@@ -111,9 +112,11 @@ tokio-test = "0.4"
 tempfile = "3"
 
 [profile.release]
+opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"
 
 [[bin]]
 name = "codexbar"
