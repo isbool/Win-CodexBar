@@ -10,6 +10,7 @@ use super::preferences::PreferencesWindow;
 use super::theme::{provider_icon, Theme};
 use crate::core::{FetchContext, Provider, ProviderId, ProviderFetchResult, RateWindow};
 use crate::cost_scanner::get_daily_cost_history;
+use crate::login::{LoginOutcome, LoginPhase};
 use crate::providers::*;
 use crate::settings::{ManualCookies, Settings};
 use crate::shortcuts::ShortcutManager;
@@ -213,6 +214,11 @@ struct SharedState {
     update_available: Option<UpdateInfo>,
     update_checked: bool,
     update_dismissed: bool,
+    // Login state
+    login_provider: Option<String>,
+    login_phase: LoginPhase,
+    login_message: Option<String>,
+    login_auth_url: Option<String>,
 }
 
 pub struct CodexBarApp {
@@ -284,6 +290,10 @@ impl CodexBarApp {
             update_available: None,
             update_checked: false,
             update_dismissed: false,
+            login_provider: None,
+            login_phase: LoginPhase::Idle,
+            login_message: None,
+            login_auth_url: None,
         }));
 
         // Initialize system tray
@@ -424,6 +434,79 @@ impl CodexBarApp {
             }
         });
     }
+
+    fn start_login(&self, provider_name: &str) {
+        let state = Arc::clone(&self.state);
+        let provider = provider_name.to_string();
+
+        // Set initial login state
+        if let Ok(mut s) = state.lock() {
+            s.login_provider = Some(provider.clone());
+            s.login_phase = LoginPhase::Requesting;
+            s.login_message = Some(format!("Starting {} login...", provider));
+            s.login_auth_url = None;
+        }
+
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let state_for_phase = Arc::clone(&state);
+                let on_phase = move |phase: LoginPhase| {
+                    if let Ok(mut s) = state_for_phase.lock() {
+                        s.login_phase = phase;
+                        s.login_message = Some(match phase {
+                            LoginPhase::Idle => "Ready".to_string(),
+                            LoginPhase::Requesting => "Requesting login...".to_string(),
+                            LoginPhase::WaitingBrowser => "Complete login in browser...".to_string(),
+                            LoginPhase::Complete => "Login complete!".to_string(),
+                        });
+                    }
+                };
+
+                let result = match provider.as_str() {
+                    "claude" => crate::login::run_claude_login(120, on_phase).await,
+                    "codex" => crate::login::run_codex_login(120, on_phase).await,
+                    "gemini" => crate::login::run_gemini_login(120, on_phase).await,
+                    "copilot" => crate::login::run_copilot_login(120, on_phase).await,
+                    _ => return,
+                };
+
+                // Update state with result
+                if let Ok(mut s) = state.lock() {
+                    s.login_auth_url = result.auth_link.clone();
+                    match result.outcome {
+                        LoginOutcome::Success => {
+                            s.login_phase = LoginPhase::Complete;
+                            s.login_message = Some("Login successful!".to_string());
+                        }
+                        LoginOutcome::TimedOut => {
+                            s.login_message = Some("Login timed out. Please try again.".to_string());
+                        }
+                        LoginOutcome::MissingBinary => {
+                            s.login_message = Some(format!("{} CLI not found in PATH", provider));
+                        }
+                        LoginOutcome::Failed { status } => {
+                            s.login_message = Some(format!("Login failed (exit code {})", status));
+                        }
+                        LoginOutcome::LaunchFailed(ref err) => {
+                            s.login_message = Some(format!("Failed to start login: {}", err));
+                        }
+                    }
+                }
+
+                // Auto-clear after a delay on success
+                if matches!(result.outcome, LoginOutcome::Success) {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    if let Ok(mut s) = state.lock() {
+                        s.login_provider = None;
+                        s.login_phase = LoginPhase::Idle;
+                        s.login_message = None;
+                        s.login_auth_url = None;
+                    }
+                }
+            });
+        });
+    }
 }
 
 fn create_provider(id: ProviderId) -> Box<dyn Provider> {
@@ -448,10 +531,12 @@ fn create_provider(id: ProviderId) -> Box<dyn Provider> {
 
 impl eframe::App for CodexBarApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Check keyboard shortcuts
+        // Check keyboard shortcuts - process ALL pending events
         if let Some(ref shortcut_mgr) = self.shortcut_manager {
-            if shortcut_mgr.check_events() {
-                // Shortcut pressed - bring window to front
+            while shortcut_mgr.check_events() {
+                // Shortcut pressed - bring window to front and make visible
+                tracing::info!("Keyboard shortcut triggered - focusing window");
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
         }
@@ -472,7 +557,7 @@ impl eframe::App for CodexBarApp {
         }
 
         // Get state
-        let (providers, is_refreshing, loading_pattern, loading_phase, surprise_state, update_info) = {
+        let (providers, is_refreshing, loading_pattern, loading_phase, surprise_state, update_info, login_state) = {
             if let Ok(mut state) = self.state.lock() {
                 // Advance loading animation phase
                 if state.is_refreshing {
@@ -516,17 +601,27 @@ impl eframe::App for CodexBarApp {
                     state.update_available.clone()
                 };
 
-                (state.providers.clone(), state.is_refreshing, state.loading_pattern, state.loading_phase, surprise, update)
+                // Get login state
+                let login_state = (
+                    state.login_provider.clone(),
+                    state.login_phase,
+                    state.login_message.clone(),
+                );
+
+                (state.providers.clone(), state.is_refreshing, state.loading_pattern, state.loading_phase, surprise, update, login_state)
             } else {
-                (Vec::new(), false, LoadingPattern::default(), 0.0, None, None)
+                (Vec::new(), false, LoadingPattern::default(), 0.0, None, None, (None, LoginPhase::Idle, None))
             }
         };
 
-        // Request repaint - faster during loading or surprise animation
-        ctx.request_repaint_after(if is_refreshing || surprise_state.is_some() {
+        let (login_provider, login_phase, login_message) = login_state;
+        let is_logging_in = login_provider.is_some() && login_phase != LoginPhase::Idle;
+
+        // Request repaint - faster during loading, animation, login, or to catch hotkeys
+        ctx.request_repaint_after(if is_refreshing || surprise_state.is_some() || is_logging_in {
             Duration::from_millis(50) // ~20fps for smooth animation
         } else {
-            Duration::from_secs(1)
+            Duration::from_millis(200) // Check for hotkeys frequently
         });
 
         // Update tray icon with selected provider's usage
@@ -610,6 +705,8 @@ impl eframe::App for CodexBarApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(Theme::BG_PRIMARY).inner_margin(16.0))
             .show(ctx, |ui| {
+                // Wrap everything in a scroll area
+                egui::ScrollArea::vertical().show(ui, |ui| {
                 // ════════════════════════════════════════════════════════════
                 // UPDATE BANNER (if available)
                 // ════════════════════════════════════════════════════════════
@@ -660,91 +757,173 @@ impl eframe::App for CodexBarApp {
                 }
 
                 // ════════════════════════════════════════════════════════════
-                // PROVIDERS CARD - Tab bar + More Providers together
+                // PROVIDERS CARD - Refined tab bar design
                 // ════════════════════════════════════════════════════════════
 
                 egui::Frame::none()
                     .fill(Theme::CARD_BG)
-                    .rounding(Rounding::same(14.0))
-                    .inner_margin(12.0)
+                    .rounding(Rounding::same(16.0))
+                    .inner_margin(16.0)
                     .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
                     .show(ui, |ui| {
-                        // Main tab bar
-                        egui::Frame::none()
-                            .fill(Theme::TAB_CONTAINER)
-                            .rounding(Rounding::same(10.0))
-                            .inner_margin(6.0)
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                        // Main tab bar - horizontal scrollable area
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
 
-                                    let main_count = providers.len().min(MAIN_PROVIDER_COUNT);
-                                    for idx in 0..main_count {
-                                        let provider = &providers[idx];
-                                        let is_selected = idx == self.selected_provider;
-                                        let icon = provider_icon(&provider.name);
+                            let main_count = providers.len().min(MAIN_PROVIDER_COUNT);
+                            for idx in 0..main_count {
+                                let provider = &providers[idx];
+                                let is_selected = idx == self.selected_provider;
+                                let icon = provider_icon(&provider.name);
 
-                                        let (bg, text_color) = if is_selected {
-                                            (Theme::TAB_ACTIVE, Theme::TAB_TEXT_ACTIVE)
-                                        } else {
-                                            (Color32::TRANSPARENT, Theme::TAB_TEXT_INACTIVE)
-                                        };
+                                // Custom tab rendering
+                                let tab_width = 56.0;
+                                let tab_height = 52.0;
+                                let (rect, response) = ui.allocate_exact_size(
+                                    Vec2::new(tab_width, tab_height),
+                                    egui::Sense::click(),
+                                );
 
-                                        let btn = egui::Button::new(
-                                            RichText::new(format!("{}\n{}", icon, provider.display_name))
-                                                .size(11.0)
-                                                .color(text_color),
-                                        )
-                                        .fill(bg)
-                                        .stroke(Stroke::NONE)
-                                        .rounding(Rounding::same(8.0))
-                                        .min_size(Vec2::new(52.0, 44.0));
+                                let is_hovered = response.hovered();
 
-                                        if ui.add(btn).clicked() {
-                                            self.selected_provider = idx;
-                                        }
-                                    }
+                                // Background
+                                let bg_color = if is_selected {
+                                    Theme::ACCENT_PRIMARY
+                                } else if is_hovered {
+                                    Theme::SURFACE_ELEVATED
+                                } else {
+                                    Color32::TRANSPARENT
+                                };
 
-                                    if is_refreshing {
-                                        ui.spinner();
-                                    }
-                                });
-                            });
+                                let rounding = Rounding::same(12.0);
+                                ui.painter().rect_filled(rect, rounding, bg_color);
 
-                        // More Providers - directly below main tabs, inside same card
+                                // Glow effect for selected
+                                if is_selected {
+                                    let glow_rect = rect.expand(2.0);
+                                    let glow_color = Color32::from_rgba_unmultiplied(0, 212, 255, 25);
+                                    ui.painter().rect_filled(glow_rect, Rounding::same(14.0), glow_color);
+                                    ui.painter().rect_filled(rect, rounding, bg_color);
+                                }
+
+                                // Icon
+                                let icon_color = if is_selected {
+                                    Color32::WHITE
+                                } else if is_hovered {
+                                    Theme::ACCENT_PRIMARY
+                                } else {
+                                    Theme::TEXT_MUTED
+                                };
+
+                                let icon_pos = egui::pos2(rect.center().x, rect.min.y + 18.0);
+                                ui.painter().text(
+                                    icon_pos,
+                                    egui::Align2::CENTER_CENTER,
+                                    icon,
+                                    egui::FontId::proportional(16.0),
+                                    icon_color,
+                                );
+
+                                // Label
+                                let text_color = if is_selected {
+                                    Color32::WHITE
+                                } else if is_hovered {
+                                    Theme::TEXT_PRIMARY
+                                } else {
+                                    Theme::TEXT_MUTED
+                                };
+
+                                let label_pos = egui::pos2(rect.center().x, rect.max.y - 12.0);
+                                ui.painter().text(
+                                    label_pos,
+                                    egui::Align2::CENTER_CENTER,
+                                    &provider.display_name,
+                                    egui::FontId::proportional(10.0),
+                                    text_color,
+                                );
+
+                                if response.clicked() {
+                                    self.selected_provider = idx;
+                                }
+                            }
+
+                            if is_refreshing {
+                                ui.add_space(8.0);
+                                ui.spinner();
+                            }
+                        });
+
+                        // More Providers - compact pill style
                         if providers.len() > MAIN_PROVIDER_COUNT {
-                            ui.add_space(8.0);
+                            ui.add_space(12.0);
+
+                            // Separator line
+                            let sep_rect = ui.available_rect_before_wrap();
+                            ui.painter().hline(
+                                sep_rect.x_range(),
+                                sep_rect.top(),
+                                Stroke::new(1.0, Theme::SEPARATOR),
+                            );
+                            ui.add_space(12.0);
 
                             ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
-
-                                ui.label(
-                                    RichText::new("More:")
-                                        .size(10.0)
-                                        .color(Theme::TEXT_MUTED),
-                                );
+                                ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
 
                                 for idx in MAIN_PROVIDER_COUNT..providers.len() {
                                     let provider = &providers[idx];
                                     let is_selected = idx == self.selected_provider;
                                     let icon = provider_icon(&provider.name);
 
-                                    let (bg, text_color) = if is_selected {
-                                        (Theme::TAB_ACTIVE, Color32::WHITE)
+                                    // Pill-style button
+                                    let pill_height = 26.0;
+                                    let text = format!("{} {}", icon, provider.display_name);
+                                    let text_width = ui.fonts(|f| {
+                                        f.glyph_width(&egui::FontId::proportional(10.0), ' ') * text.len() as f32 * 0.6
+                                    }).max(50.0);
+
+                                    let (rect, response) = ui.allocate_exact_size(
+                                        Vec2::new(text_width + 16.0, pill_height),
+                                        egui::Sense::click(),
+                                    );
+
+                                    let is_hovered = response.hovered();
+
+                                    let bg_color = if is_selected {
+                                        Theme::ACCENT_PRIMARY
+                                    } else if is_hovered {
+                                        Theme::SURFACE_ELEVATED
                                     } else {
-                                        (Theme::TAB_INACTIVE, Theme::TAB_TEXT_INACTIVE)
+                                        Theme::TAB_CONTAINER
                                     };
 
-                                    let btn = egui::Button::new(
-                                        RichText::new(format!("{} {}", icon, provider.display_name))
-                                            .size(9.0)
-                                            .color(text_color),
-                                    )
-                                    .fill(bg)
-                                    .stroke(Stroke::NONE)
-                                    .rounding(Rounding::same(5.0));
+                                    let text_color = if is_selected {
+                                        Color32::WHITE
+                                    } else if is_hovered {
+                                        Theme::TEXT_PRIMARY
+                                    } else {
+                                        Theme::TEXT_MUTED
+                                    };
 
-                                    if ui.add(btn).clicked() {
+                                    // Border for unselected
+                                    if !is_selected {
+                                        ui.painter().rect_stroke(
+                                            rect,
+                                            Rounding::same(13.0),
+                                            Stroke::new(1.0, Theme::SEPARATOR),
+                                        );
+                                    }
+
+                                    ui.painter().rect_filled(rect, Rounding::same(13.0), bg_color);
+
+                                    ui.painter().text(
+                                        rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        &text,
+                                        egui::FontId::proportional(10.0),
+                                        text_color,
+                                    );
+
+                                    if response.clicked() {
                                         self.selected_provider = idx;
                                     }
                                 }
@@ -939,59 +1118,94 @@ impl eframe::App for CodexBarApp {
                             }
                         }
 
-                        // Login button for providers that support CLI login
+                        // Login button for all providers
                         if let Some(p) = providers.get(self.selected_provider) {
-                            let supports_login = matches!(
+                            let supports_cli_login = matches!(
                                 p.name.as_str(),
                                 "claude" | "codex" | "gemini" | "copilot"
                             );
-                            if supports_login {
-                                if menu_button(ui, "🔑", "Login...") {
-                                    // Try CLI login first, then fall back to web
-                                    match p.name.as_str() {
-                                        "claude" => {
-                                            // Try to run 'claude /login' in a terminal
-                                            if which::which("claude").is_ok() {
-                                                let _ = std::process::Command::new("cmd")
-                                                    .args(["/c", "start", "cmd", "/k", "claude", "/login"])
-                                                    .spawn();
-                                            } else {
-                                                let _ = open::that("https://claude.ai/login");
+
+                            // Get web login URL for providers without CLI login
+                            let web_login_url = match p.name.as_str() {
+                                "cursor" => Some("https://cursor.com/settings"),
+                                "windsurf" | "factory" => Some("https://codeium.com/account"),
+                                "zed" | "zed ai" => Some("https://zed.dev/account"),
+                                "kiro" => Some("https://kiro.dev"),
+                                "vertexai" | "vertex ai" => Some("https://console.cloud.google.com/vertex-ai"),
+                                "augment" => Some("https://app.augmentcode.com"),
+                                "minimax" => Some("https://www.minimax.chat"),
+                                "opencode" => Some("https://opencode.ai"),
+                                "kimi" | "kimik2" | "kimi k2" => Some("https://kimi.moonshot.cn"),
+                                _ => None,
+                            };
+
+                            // Check if this is a local-only provider (login managed in their app)
+                            let is_local_app_login = matches!(p.name.as_str(), "antigravity");
+
+                            if supports_cli_login {
+                                // Show login status if logging in
+                                if is_logging_in && login_provider.as_ref() == Some(&p.name) {
+                                    ui.add_space(4.0);
+                                    egui::Frame::none()
+                                        .fill(Theme::BG_SECONDARY)
+                                        .rounding(Rounding::same(8.0))
+                                        .inner_margin(12.0)
+                                        .show(ui, |ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.spinner();
+                                                ui.add_space(8.0);
+                                                let phase_icon = match login_phase {
+                                                    LoginPhase::Idle => "⚪",
+                                                    LoginPhase::Requesting => "🔄",
+                                                    LoginPhase::WaitingBrowser => "🌐",
+                                                    LoginPhase::Complete => "✅",
+                                                };
+                                                ui.label(
+                                                    RichText::new(format!("{} {}", phase_icon, login_message.as_deref().unwrap_or("")))
+                                                        .size(12.0)
+                                                        .color(Theme::TEXT_PRIMARY),
+                                                );
+                                            });
+
+                                            // Cancel button
+                                            if ui.add(egui::Button::new(
+                                                RichText::new("Cancel")
+                                                    .size(11.0)
+                                            ).fill(Theme::CARD_BG)).clicked() {
+                                                if let Ok(mut s) = self.state.lock() {
+                                                    s.login_provider = None;
+                                                    s.login_phase = LoginPhase::Idle;
+                                                    s.login_message = None;
+                                                    s.login_auth_url = None;
+                                                }
                                             }
-                                        }
-                                        "codex" => {
-                                            // Try to run 'codex auth login' in a terminal
-                                            if which::which("codex").is_ok() {
-                                                let _ = std::process::Command::new("cmd")
-                                                    .args(["/c", "start", "cmd", "/k", "codex", "auth", "login"])
-                                                    .spawn();
-                                            } else {
-                                                let _ = open::that("https://platform.openai.com/login");
-                                            }
-                                        }
-                                        "gemini" => {
-                                            // Try to run 'gcloud auth login' in a terminal
-                                            if which::which("gcloud").is_ok() {
-                                                let _ = std::process::Command::new("cmd")
-                                                    .args(["/c", "start", "cmd", "/k", "gcloud", "auth", "login"])
-                                                    .spawn();
-                                            } else {
-                                                let _ = open::that("https://aistudio.google.com/");
-                                            }
-                                        }
-                                        "copilot" => {
-                                            // Try to run 'gh auth login -w' in a terminal
-                                            if which::which("gh").is_ok() {
-                                                let _ = std::process::Command::new("cmd")
-                                                    .args(["/c", "start", "cmd", "/k", "gh", "auth", "login", "-w"])
-                                                    .spawn();
-                                            } else {
-                                                let _ = open::that("https://github.com/login/device");
-                                            }
-                                        }
-                                        _ => {}
-                                    }
+                                        });
+                                    ui.add_space(4.0);
+                                } else if menu_button(ui, "🔑", "Login...") {
+                                    // Start in-app CLI login
+                                    self.start_login(&p.name);
                                 }
+                            } else if let Some(url) = web_login_url {
+                                // Web-based login for providers without CLI
+                                if menu_button(ui, "🔑", "Login (Web)...") {
+                                    let _ = open::that(url);
+                                }
+                            } else if is_local_app_login {
+                                // Show info for local-app-managed login
+                                ui.add_space(4.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new("ℹ")
+                                            .size(12.0)
+                                            .color(Theme::ACCENT_PRIMARY),
+                                    );
+                                    ui.label(
+                                        RichText::new("Login is managed in the Antigravity app")
+                                            .size(11.0)
+                                            .color(Theme::TEXT_MUTED),
+                                    );
+                                });
+                                ui.add_space(4.0);
                             }
                         }
 
@@ -1029,6 +1243,7 @@ impl eframe::App for CodexBarApp {
                             std::process::exit(0);
                         }
                     });
+                }); // End ScrollArea
             });
 
         // Show preferences window if open
@@ -1041,40 +1256,66 @@ impl eframe::App for CodexBarApp {
     }
 }
 
-/// Draw a usage bar with label and percentage (thin macOS-style)
+/// Draw a usage bar with label and percentage - glowing neon style
 fn draw_usage_bar(ui: &mut egui::Ui, label: &str, percent: f64, reset: Option<&str>) {
     let color = Theme::usage_color(percent);
+    let glow_color = Theme::usage_glow_color(percent);
 
-    // Label row
+    // Label row with percentage badge
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).size(14.0).color(Theme::TEXT_PRIMARY));
+        ui.label(RichText::new(label).size(13.0).color(Theme::TEXT_PRIMARY).strong());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Percentage badge
+            let badge_color = if percent >= 90.0 {
+                Theme::RED
+            } else if percent >= 75.0 {
+                Theme::ORANGE
+            } else {
+                Theme::TEXT_DIM
+            };
+            ui.label(RichText::new(format!("{}%", percent as i32)).size(11.0).color(badge_color));
+        });
     });
 
-    ui.add_space(2.0);
+    ui.add_space(6.0);
 
-    // Thin progress bar (macOS style)
-    let bar_height = 4.0;
+    // Glowing progress bar
+    let bar_height = 6.0;
+    let glow_height = 10.0;
     let available_width = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(available_width, bar_height), egui::Sense::hover());
 
-    ui.painter().rect_filled(rect, Rounding::same(2.0), Theme::PROGRESS_TRACK);
+    // Allocate space for glow + bar
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(available_width, glow_height), egui::Sense::hover());
+    let bar_rect = Rect::from_min_size(
+        egui::pos2(rect.min.x, rect.min.y + 2.0),
+        Vec2::new(available_width, bar_height),
+    );
 
-    let fill_w = rect.width() * (percent as f32 / 100.0);
+    // Track with subtle inner glow
+    ui.painter().rect_filled(bar_rect, Rounding::same(3.0), Theme::PROGRESS_TRACK);
+
+    let fill_w = bar_rect.width() * (percent as f32 / 100.0);
     if fill_w > 0.0 {
-        let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, bar_height));
-        ui.painter().rect_filled(fill_rect, Rounding::same(2.0), color);
+        let fill_rect = Rect::from_min_size(bar_rect.min, Vec2::new(fill_w, bar_height));
+
+        // Glow effect behind the bar
+        let glow_rect = Rect::from_min_size(
+            egui::pos2(fill_rect.min.x, rect.min.y),
+            Vec2::new(fill_w, glow_height),
+        );
+        ui.painter().rect_filled(glow_rect, Rounding::same(5.0), glow_color);
+
+        // Main fill
+        ui.painter().rect_filled(fill_rect, Rounding::same(3.0), color);
     }
 
-    ui.add_space(4.0);
+    ui.add_space(6.0);
 
-    // Stats row
+    // Stats row - cleaner layout
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{}% used", percent as i32)).size(11.0).color(Theme::TEXT_MUTED));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if let Some(r) = reset {
-                ui.label(RichText::new(format!("Resets in {}", r)).size(11.0).color(Theme::TEXT_MUTED));
-            }
-        });
+        if let Some(r) = reset {
+            ui.label(RichText::new(format!("⟳ {}", r)).size(10.0).color(Theme::TEXT_MUTED));
+        }
     });
 }
 
@@ -1198,28 +1439,67 @@ fn draw_cost_section(ui: &mut egui::Ui, used: &str, limit: Option<&str>, period:
     });
 }
 
-/// Draw a menu button, returns true if clicked
+/// Draw a menu button with hover glow, returns true if clicked
 fn menu_button(ui: &mut egui::Ui, icon: &str, label: &str) -> bool {
-    let btn = egui::Button::new(
-        RichText::new(format!("{}   {}", icon, label))
-            .size(13.0)
-            .color(Theme::TEXT_PRIMARY),
-    )
-    .fill(Color32::TRANSPARENT)
-    .stroke(Stroke::NONE)
-    .rounding(Rounding::same(6.0))
-    .min_size(Vec2::new(ui.available_width(), 30.0));
+    let available_width = ui.available_width();
 
-    ui.add(btn).clicked()
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(available_width, 36.0),
+        egui::Sense::click(),
+    );
+
+    let is_hovered = response.hovered();
+    let bg_color = if is_hovered {
+        Theme::CARD_BG_HOVER
+    } else {
+        Color32::TRANSPARENT
+    };
+
+    // Background with hover effect
+    ui.painter().rect_filled(rect, Rounding::same(8.0), bg_color);
+
+    // Accent line on hover
+    if is_hovered {
+        let accent_rect = Rect::from_min_size(
+            rect.min,
+            Vec2::new(3.0, rect.height()),
+        );
+        ui.painter().rect_filled(accent_rect, Rounding::same(2.0), Theme::ACCENT_PRIMARY);
+    }
+
+    // Icon and text
+    let text_color = if is_hovered {
+        Theme::TEXT_PRIMARY
+    } else {
+        Theme::TEXT_MUTED
+    };
+
+    let icon_color = if is_hovered {
+        Theme::ACCENT_PRIMARY
+    } else {
+        Theme::TEXT_DIM
+    };
+    let _ = icon_color; // Suppress warning - reserved for future use
+
+    let text_pos = egui::pos2(rect.min.x + 16.0, rect.center().y);
+    ui.painter().text(
+        text_pos,
+        egui::Align2::LEFT_CENTER,
+        format!("{}  {}", icon, label),
+        egui::FontId::proportional(13.0),
+        text_color,
+    );
+
+    response.clicked()
 }
 
 /// Run the application
 pub fn run() -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([420.0, 620.0])
-            .with_min_inner_size([420.0, 500.0])
-            .with_max_inner_size([420.0, 800.0])
+            .with_inner_size([420.0, 720.0])
+            .with_min_inner_size([420.0, 600.0])
+            .with_max_inner_size([420.0, 900.0])
             .with_resizable(true)
             .with_decorations(true)
             .with_transparent(false)
