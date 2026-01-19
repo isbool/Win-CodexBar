@@ -1,6 +1,6 @@
-//! Z.ai (Zed AI) Usage Statistics and MCP Details
+//! Zai (z.ai) Usage Statistics and MCP Details
 //!
-//! Provides detailed usage tracking for Z.ai/Zed AI provider including:
+//! Provides detailed usage tracking for Zai provider including:
 //! - Token limits
 //! - Time limits
 //! - Per-model usage details for MCP (Model Context Protocol)

@@ -88,7 +88,7 @@ impl ProviderId {
             ProviderId::Gemini => "Gemini",
             ProviderId::Antigravity => "Antigravity",
             ProviderId::Copilot => "Copilot",
-            ProviderId::Zai => "Zed AI",
+            ProviderId::Zai => "Zai",
             ProviderId::MiniMax => "MiniMax",
             ProviderId::Kiro => "Kiro",
             ProviderId::VertexAI => "Vertex AI",
@@ -366,7 +366,7 @@ mod tests {
     fn test_provider_id_display_name() {
         assert_eq!(ProviderId::Claude.display_name(), "Claude");
         assert_eq!(ProviderId::Factory.display_name(), "Windsurf");
-        assert_eq!(ProviderId::Zai.display_name(), "Zed AI");
+        assert_eq!(ProviderId::Zai.display_name(), "Zai");
     }
 
     #[test]

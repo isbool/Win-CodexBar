@@ -34,7 +34,7 @@ Final wave of feature porting from the original Swift macOS CodexBar:
   - Prerelease and build metadata support
   - Minimum version requirement validation
 
-- **Zed AI MCP Details**: Usage breakdown menu
+- **Zai MCP Details**: Usage breakdown menu
   - Per-model token and time limits
   - Multiple limit type support (tokens, time)
   - Window label and reset time display
@@ -196,7 +196,7 @@ Ported advanced features from the original Swift macOS CodexBar codebase:
   - Password-masked API key input with validation
   - Environment variable hints (e.g., `SRC_ACCESS_TOKEN`)
   - Dashboard links for quick access to provider settings
-  - Support for Amp, Synthetic, Copilot, and Zed AI
+  - Support for Amp, Synthetic, Copilot, and Zai
 - **Tab Icons**: Added emoji icons to preference tabs for visual clarity
 - **Resizable Window**: Preferences window now resizable with improved layout
 
@@ -224,7 +224,7 @@ Ported advanced features from the original Swift macOS CodexBar codebase:
 ### Initial Windows Port
 - Full Windows native port of CodexBar using Rust + egui
 - System tray integration with animated icons
-- Support for 15 AI providers: Claude, Codex, Cursor, Gemini, Copilot, Antigravity, Windsurf/Factory, Zed AI, MiniMax, Kiro, Vertex AI, Augment, OpenCode, Kimi, Kimi K2
+- Support for 15 AI providers: Claude, Codex, Cursor, Gemini, Copilot, Antigravity, Windsurf/Factory, Zai, MiniMax, Kiro, Vertex AI, Augment, OpenCode, Kimi, Kimi K2
 - Native Windows notifications via toast
 - Browser cookie extraction from Chrome, Edge, Firefox, Brave
 - Keyboard shortcuts via global-hotkey

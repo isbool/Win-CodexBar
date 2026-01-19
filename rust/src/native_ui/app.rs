@@ -1168,7 +1168,7 @@ impl eframe::App for CodexBarApp {
                             let web_login_url = match p.name.as_str() {
                                 "cursor" => Some("https://cursor.com/settings"),
                                 "windsurf" | "factory" => Some("https://codeium.com/account"),
-                                "zed" | "zed ai" => Some("https://zed.dev/account"),
+                                "zed" | "zai" => Some("https://zed.dev/account"),
                                 "kiro" => Some("https://kiro.dev"),
                                 "vertexai" | "vertex ai" => Some("https://console.cloud.google.com/vertex-ai"),
                                 "augment" => Some("https://app.augmentcode.com"),

@@ -1,7 +1,7 @@
-//! Zed AI (z.ai) provider implementation
+//! Zai (z.ai) provider implementation
 //!
-//! Fetches usage data from Zed's AI service
-//! Zed stores credentials and usage info locally
+//! Fetches usage data from Zai's AI service
+//! Zai stores credentials and usage info locally
 
 pub mod mcp_details;
 
@@ -17,7 +17,7 @@ use crate::core::{
     ProviderMetadata, RateWindow, SourceMode, UsageSnapshot,
 };
 
-/// Zed AI provider
+/// Zai provider
 pub struct ZaiProvider {
     metadata: ProviderMetadata,
 }
@@ -27,7 +27,7 @@ impl ZaiProvider {
         Self {
             metadata: ProviderMetadata {
                 id: ProviderId::Zai,
-                display_name: "Zed AI",
+                display_name: "Zai",
                 session_label: "Session",
                 weekly_label: "Monthly",
                 supports_opus: false,
@@ -144,7 +144,7 @@ impl ZaiProvider {
         let plan = json.get("plan")
             .or_else(|| json.get("subscription"))
             .and_then(|v| v.as_str())
-            .unwrap_or("Zed AI");
+            .unwrap_or("Zai");
 
         let mut usage = UsageSnapshot::new(RateWindow::new(used_percent))
             .with_login_method(plan);
@@ -189,7 +189,7 @@ impl Provider for ZaiProvider {
     }
 
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
-        tracing::debug!("Fetching Zed AI usage");
+        tracing::debug!("Fetching Zai usage");
 
         match ctx.source_mode {
             SourceMode::Auto => {

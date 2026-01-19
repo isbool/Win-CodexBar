@@ -499,7 +499,7 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
         },
         ProviderConfigInfo {
             id: ProviderId::Zai,
-            name: "Zed AI",
+            name: "Zai",
             requires_api_key: true,
             api_key_env_var: Some("ZED_API_KEY"),
             api_key_help: Some("Get your API key from Zed → Settings → API"),

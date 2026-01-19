@@ -197,7 +197,7 @@ pub fn provider_icon(name: &str) -> &'static str {
         "copilot" => "⬡",
         "antigravity" => "◉",
         "factory" | "windsurf" => "◎",
-        "zed" | "zed ai" => "Z",
+        "zed" | "zai" => "Z",
         "kiro" => "K",
         "vertexai" | "vertex ai" => "△",
         "augment" => "A",
@@ -221,7 +221,7 @@ pub fn provider_color(name: &str) -> Color32 {
         "copilot" => Color32::from_rgb(36, 41, 47),    // GitHub dark
         "antigravity" => Color32::from_rgb(0, 212, 255), // Cyan
         "factory" | "windsurf" => Color32::from_rgb(0, 200, 150),
-        "zed" | "zed ai" => Color32::from_rgb(255, 100, 50),
+        "zed" | "zai" => Color32::from_rgb(255, 100, 50),
         "kiro" => Color32::from_rgb(255, 165, 0),
         "vertexai" | "vertex ai" => Color32::from_rgb(66, 133, 244),
         "augment" => Color32::from_rgb(100, 200, 255),

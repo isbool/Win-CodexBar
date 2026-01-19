@@ -15,7 +15,7 @@ A Windows port of [CodexBar](https://github.com/steipete/CodexBar) - a system tr
   - Copilot (GitHub)
   - Antigravity
   - Windsurf (Factory/Codeium)
-  - Zed AI
+  - Zai
   - Kiro (AWS)
   - Vertex AI (Google Cloud)
   - Augment
@@ -133,7 +133,7 @@ Each provider has different authentication methods:
 | Copilot | GitHub device flow |
 | Antigravity | Local language server |
 | Windsurf | Browser cookies, local config |
-| Zed AI | Local config |
+| Zai | Local config |
 | Kiro | AWS credentials |
 | Vertex AI | gcloud OAuth |
 | Augment | VS Code extension |

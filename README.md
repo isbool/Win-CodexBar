@@ -6,7 +6,7 @@ A Windows port of [CodexBar](https://github.com/steipete/CodexBar) - the tiny me
 
 ## Features
 
-- **15 AI Providers**: Codex, Claude, Cursor, Gemini, Copilot, Antigravity, Windsurf, Zed AI, Kiro, Vertex AI, Augment, MiniMax, OpenCode, Kimi, Kimi K2
+- **15 AI Providers**: Codex, Claude, Cursor, Gemini, Copilot, Antigravity, Windsurf, Zai, Kiro, Vertex AI, Augment, MiniMax, OpenCode, Kimi, Kimi K2
 - **System Tray Icon**: Dynamic two-bar meter showing session + weekly usage
 - **Native Windows UI**: Built with egui - no web runtime required
 - **Browser Cookie Extraction**: Automatic extraction from Chrome, Edge, Brave, Firefox (DPAPI encrypted)
@@ -59,7 +59,7 @@ codexbar cost -p claude
 | Copilot | GitHub Device Flow | Usage |
 | Antigravity | Local Language Server | Usage |
 | Windsurf | Local Config | Usage |
-| Zed AI | API Token | Quota |
+| Zai | API Token | Quota |
 | Kiro | CLI | Monthly Credits |
 | Vertex AI | gcloud OAuth | Cost Tracking |
 | Augment | Browser Cookies | Credits |

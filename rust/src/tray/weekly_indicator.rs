@@ -92,7 +92,7 @@ impl WeeklyIndicatorColors {
             ProviderId::Gemini => (66, 133, 244, 255),   // Google blue
             ProviderId::Antigravity => (156, 39, 176, 255), // Purple
             ProviderId::Copilot => (36, 41, 47, 255),    // GitHub dark
-            ProviderId::Zai => (255, 107, 0, 255),       // Zed orange
+            ProviderId::Zai => (255, 107, 0, 255),       // Zai orange
             ProviderId::MiniMax => (255, 193, 7, 255),   // Yellow
             ProviderId::Kiro => (255, 153, 0, 255),      // AWS orange
             ProviderId::VertexAI => (66, 133, 244, 255), // Google blue
