@@ -15,7 +15,7 @@ use crate::providers::*;
 use crate::settings::{ManualCookies, Settings};
 use crate::shortcuts::ShortcutManager;
 use crate::status::{fetch_provider_status, get_status_page_url, StatusLevel};
-use crate::tray::{IconOverlay, LoadingPattern, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction};
+use crate::tray::{IconOverlay, LoadingPattern, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction, WeeklyIndicatorColors};
 use crate::updater::{self, UpdateInfo};
 
 const MAIN_PROVIDER_COUNT: usize = 6;
@@ -843,6 +843,42 @@ impl eframe::App for CodexBarApp {
                                     egui::FontId::proportional(10.0),
                                     text_color,
                                 );
+
+                                // Weekly indicator bar (4px at bottom) - only for non-selected tabs with weekly data
+                                if !is_selected {
+                                    if let Some(weekly) = provider.weekly_percent {
+                                        let indicator_height = 4.0;
+                                        let indicator_padding = 6.0;
+                                        let indicator_y = rect.max.y - indicator_height - 2.0;
+                                        let indicator_width = rect.width() - (indicator_padding * 2.0);
+
+                                        // Track (background)
+                                        let track_rect = Rect::from_min_size(
+                                            egui::pos2(rect.min.x + indicator_padding, indicator_y),
+                                            Vec2::new(indicator_width, indicator_height),
+                                        );
+                                        let track_color = Color32::from_rgba_unmultiplied(128, 128, 128, 56);
+                                        ui.painter().rect_filled(track_rect, Rounding::same(2.0), track_color);
+
+                                        // Fill (remaining = 100 - used)
+                                        let remaining = (100.0 - weekly).clamp(0.0, 100.0);
+                                        let fill_width = indicator_width * (remaining as f32 / 100.0);
+                                        if fill_width > 0.0 {
+                                            let fill_rect = Rect::from_min_size(
+                                                egui::pos2(rect.min.x + indicator_padding, indicator_y),
+                                                Vec2::new(fill_width, indicator_height),
+                                            );
+                                            // Get provider color
+                                            if let Some(pid) = ProviderId::from_cli_name(&provider.name) {
+                                                let colors = WeeklyIndicatorColors::for_provider(pid);
+                                                let fill_color = Color32::from_rgba_unmultiplied(
+                                                    colors.fill.0, colors.fill.1, colors.fill.2, colors.fill.3
+                                                );
+                                                ui.painter().rect_filled(fill_rect, Rounding::same(2.0), fill_color);
+                                            }
+                                        }
+                                    }
+                                }
 
                                 if response.clicked() {
                                     self.selected_provider = idx;
