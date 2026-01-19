@@ -1,6 +1,6 @@
 [package]
 name = "codexbar"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["CodexBar Contributors"]
 description = "Windows system tray app for monitoring AI provider usage limits"
@@ -87,7 +87,7 @@ directories = "6"
 url = "2"
 
 # UUID generation
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 
 # Regex (lite version for simple matching)
 regex-lite = "0.1"
