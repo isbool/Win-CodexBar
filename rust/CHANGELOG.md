@@ -24,18 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-#### Swift Feature Port (Waves 1-4)
+#### Swift Feature Port (Wave 1)
 Complete porting of Swift CodexBar features to Rust Windows version:
 
-**Wave 1 - Core Infrastructure**
 - **Icon Morphing**: "Unbraid" animation from ribbons to usage bars
 - **Model-Level Cost Breakdowns**: Per-model cost tracking on chart hover
 - **Augment Session Keepalive**: Background cookie refresh before expiry
 - **VertexAI Token Refresher**: OAuth token refresh with caching
 - **MiniMax LocalStorage Import**: Browser localStorage session extraction
 - **Web Probe Watchdog**: Process watchdog for browser automation
-
-**Wave 2 - Enhanced Features**
 - **Usage Pace Prediction**: On Track/Ahead/Behind quota calculation with ETA
 - **Personal Info Redaction**: Email address privacy protection for streaming
 - **Copilot Device Flow OAuth**: GitHub Device Flow authentication
@@ -44,8 +41,6 @@ Complete porting of Swift CodexBar features to Rust Windows version:
 - **Provider-Specific Icon Twists**: Unique visual styles per provider
 - **Eye Blink System**: Micro-motion animations with per-provider state
 - **Command Runner**: Process execution with timeout and stop conditions
-
-**Wave 3 - Advanced Systems**
 - **Token Account Multi-Support**: Multi-account token management with parallel fetching
 - **Credential Migration System**: Windows credential format upgrades with version tracking
 - **OpenAI Friendly Errors**: Human-readable Cloudflare/login/rate-limit detection
@@ -56,8 +51,6 @@ Complete porting of Swift CodexBar features to Rust Windows version:
 - **Eye Blink Animation**: Random blinks with 18% double-blink probability
 - **Icon Twist System**: Provider-specific visual styles (Claude crab, Gemini sparkle, etc.)
 - **Provider Status Indicators**: Health overlays with Statuspage.io integration
-
-**Wave 4 - Final Port**
 - **Session Quota Notifications**: Depleted/restored state tracking with alerts
 - **Cost Usage Pricing**: Model-specific token pricing (GPT-5, Claude Opus/Sonnet/Haiku)
 - **JSONL Scanner**: Incremental log file parsing with file-level caching for Codex/Claude sessions
@@ -80,10 +73,7 @@ Complete porting of Swift CodexBar features to Rust Windows version:
 - Console window hides automatically in GUI mode
 
 #### New Modules
-- Wave 1: `keepalive`, `token_refresher`, `local_storage`, `watchdog`
-- Wave 2: `usage_pace`, `redactor`, `icon_twist`, `blink`, `device_flow`, `mcp_details`, `scraper`, `command_runner`
-- Wave 3: `token_accounts`, `credential_migration`, `friendly_errors`, `version`, `weekly_indicator`, `menu_invalidation`, `indicators`
-- Wave 4: `session_quota`, `cost_pricing`, `jsonl_scanner`, `openai_dashboard`, `cookie_cache`, `fetch_plan`, `widget_snapshot`, `tty_runner`
+`keepalive`, `token_refresher`, `local_storage`, `watchdog`, `usage_pace`, `redactor`, `icon_twist`, `blink`, `device_flow`, `mcp_details`, `scraper`, `command_runner`, `token_accounts`, `credential_migration`, `friendly_errors`, `version`, `weekly_indicator`, `menu_invalidation`, `indicators`, `session_quota`, `cost_pricing`, `jsonl_scanner`, `openai_dashboard`, `cookie_cache`, `fetch_plan`, `widget_snapshot`, `tty_runner`
 
 ### Changed
 - Renamed "Zed AI" to "Zai" across entire codebase (display names, docs, comments)
