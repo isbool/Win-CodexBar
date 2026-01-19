@@ -42,17 +42,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.4] — 2026-01-19
 
 ### Added
-- **Token Account Multi-Support**: Multi-account token management with parallel fetching
-- **Credential Migration System**: Windows credential format upgrades with version tracking
-- **OpenAI Friendly Errors**: Human-readable Cloudflare/login/rate-limit detection
-- **OpenCode Advanced Scraper**: Workspace ID resolution from JSON/HTML
-- **Kiro CLI Version Detection**: Semver parsing with compatibility checks
-- **Zai MCP Details**: Per-model usage breakdown menu
-- **Weekly Indicator Bars**: 4px progress bars in provider switcher tabs
-- **Smart Menu Invalidation**: Version-based tracking prevents unnecessary rebuilds
-- **Eye Blink Animation**: Random blinks with 18% double-blink probability
-- **Icon Twist System**: Provider-specific visual styles (Claude crab, Gemini sparkle, etc.)
-- **Provider Status Indicators**: Health overlays with Statuspage.io integration
+- **Wave 3 Feature Port from Swift**: Continued porting of Swift CodexBar features:
+  - **Token Account Multi-Support**: Multi-account token management with parallel fetching
+  - **Credential Migration System**: Windows credential format upgrades with version tracking
+  - **OpenAI Friendly Errors**: Human-readable Cloudflare/login/rate-limit detection
+  - **OpenCode Advanced Scraper**: Workspace ID resolution from JSON/HTML
+  - **Kiro CLI Version Detection**: Semver parsing with compatibility checks
+  - **Zai MCP Details**: Per-model usage breakdown menu
+  - **Weekly Indicator Bars**: 4px progress bars in provider switcher tabs
+  - **Smart Menu Invalidation**: Version-based tracking prevents unnecessary rebuilds
+  - **Eye Blink Animation**: Random blinks with 18% double-blink probability
+  - **Icon Twist System**: Provider-specific visual styles (Claude crab, Gemini sparkle, etc.)
+  - **Provider Status Indicators**: Health overlays with Statuspage.io integration
 - New modules: `token_accounts`, `credential_migration`, `friendly_errors`, `scraper`, `version`, `weekly_indicator`, `menu_invalidation`, `indicators`
 
 ### Fixed
@@ -67,14 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.3] — 2026-01-19
 
 ### Added
-- **Usage Pace Prediction**: On Track/Ahead/Behind quota calculation with ETA
-- **Personal Info Redaction**: Email address privacy protection for streaming
-- **Copilot Device Flow OAuth**: GitHub Device Flow authentication
-- **Zai MCP Details Submenu**: Per-model usage breakdown
-- **OpenAI Deep Scraper**: React Fiber inspection for dashboard scraping
-- **Provider-Specific Icon Twists**: Unique visual styles per provider
-- **Eye Blink System**: Micro-motion animations with per-provider state
-- **Command Runner**: Process execution with timeout and stop conditions
+- **Wave 2 Feature Port from Swift**: Continued porting of Swift CodexBar features:
+  - **Usage Pace Prediction**: On Track/Ahead/Behind quota calculation with ETA
+  - **Personal Info Redaction**: Email address privacy protection for streaming
+  - **Copilot Device Flow OAuth**: GitHub Device Flow authentication
+  - **Zai MCP Details Submenu**: Per-model usage breakdown
+  - **OpenAI Deep Scraper**: React Fiber inspection for dashboard scraping
+  - **Provider-Specific Icon Twists**: Unique visual styles per provider
+  - **Eye Blink System**: Micro-motion animations with per-provider state
+  - **Command Runner**: Process execution with timeout and stop conditions
 - New modules: `usage_pace`, `redactor`, `icon_twist`, `blink`, `device_flow`, `mcp_details`, `scraper`, `command_runner`
 
 ### Technical
@@ -85,12 +87,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.2] — 2026-01-19
 
 ### Added
-- **Icon Morphing**: "Unbraid" animation from ribbons to usage bars
-- **Model-Level Cost Breakdowns**: Per-model cost tracking on chart hover
-- **Augment Session Keepalive**: Background cookie refresh before expiry
-- **VertexAI Token Refresher**: OAuth token refresh with caching
-- **MiniMax LocalStorage Import**: Browser localStorage session extraction
-- **Web Probe Watchdog**: Process watchdog for browser automation
+- **Wave 1 Feature Port from Swift**: Initial porting of Swift CodexBar features:
+  - **Icon Morphing**: "Unbraid" animation from ribbons to usage bars
+  - **Model-Level Cost Breakdowns**: Per-model cost tracking on chart hover
+  - **Augment Session Keepalive**: Background cookie refresh before expiry
+  - **VertexAI Token Refresher**: OAuth token refresh with caching
+  - **MiniMax LocalStorage Import**: Browser localStorage session extraction
+  - **Web Probe Watchdog**: Process watchdog for browser automation
 - New modules: `keepalive`, `token_refresher`, `local_storage`, `watchdog`
 
 ### Technical
