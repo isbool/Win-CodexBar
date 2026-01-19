@@ -3,6 +3,10 @@
 //! Fetches usage data from Augment Code AI
 //! Augment stores auth tokens and config locally
 
+mod keepalive;
+
+pub use keepalive::{AugmentSessionKeepalive, KeepaliveConfig};
+
 use async_trait::async_trait;
 use std::path::PathBuf;
 

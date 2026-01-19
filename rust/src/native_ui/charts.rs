@@ -6,12 +6,44 @@
 
 use eframe::egui::{self, Color32, RichText, Rounding, Vec2};
 
+/// Model cost breakdown for a single day
+#[derive(Clone, Debug)]
+pub struct ModelBreakdown {
+    pub model_name: String,
+    pub cost_usd: f64,
+}
+
 /// A single data point for the chart
 #[derive(Clone, Debug)]
 pub struct ChartPoint {
     pub date: String,      // "2025-01-15" format
     pub value: f64,        // Cost in USD or credits used
     pub tokens: Option<i64>, // Optional token count
+    pub model_breakdowns: Option<Vec<ModelBreakdown>>, // Optional model-level breakdown
+}
+
+impl ChartPoint {
+    /// Create a new chart point
+    pub fn new(date: String, value: f64) -> Self {
+        Self {
+            date,
+            value,
+            tokens: None,
+            model_breakdowns: None,
+        }
+    }
+
+    /// Builder: add tokens
+    pub fn with_tokens(mut self, tokens: i64) -> Self {
+        self.tokens = Some(tokens);
+        self
+    }
+
+    /// Builder: add model breakdowns
+    pub fn with_model_breakdowns(mut self, breakdowns: Vec<ModelBreakdown>) -> Self {
+        self.model_breakdowns = Some(breakdowns);
+        self
+    }
 }
 
 /// Cost history chart widget
@@ -151,6 +183,18 @@ impl CostHistoryChart {
                         .size(11.0)
                         .color(Color32::GRAY),
                 );
+
+                // Model breakdown (Top models)
+                if let Some(ref breakdowns) = point.model_breakdowns {
+                    let top_models = format_top_models(breakdowns);
+                    if !top_models.is_empty() {
+                        ui.label(
+                            RichText::new(top_models)
+                                .size(10.0)
+                                .color(Color32::from_rgb(150, 150, 160)),
+                        );
+                    }
+                }
             }
         } else {
             ui.label(
@@ -346,5 +390,76 @@ fn format_tokens(tokens: i64) -> String {
         format!("{:.1}K", tokens as f64 / 1_000.0)
     } else {
         tokens.to_string()
+    }
+}
+
+/// Format top models text for chart tooltip
+fn format_top_models(breakdowns: &[ModelBreakdown]) -> String {
+    if breakdowns.is_empty() {
+        return String::new();
+    }
+
+    // Sort by cost descending and take top 3
+    let mut sorted: Vec<_> = breakdowns.iter()
+        .filter(|b| b.cost_usd > 0.0)
+        .collect();
+    sorted.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+
+    let top: Vec<String> = sorted.iter()
+        .take(3)
+        .map(|b| format!("{} ${:.2}", format_model_name(&b.model_name), b.cost_usd))
+        .collect();
+
+    if top.is_empty() {
+        return String::new();
+    }
+
+    format!("Top: {}", top.join(" · "))
+}
+
+/// Format model name for display (shorten long names)
+fn format_model_name(name: &str) -> String {
+    // Common model name mappings
+    let name_lower = name.to_lowercase();
+
+    if name_lower.contains("claude-3.5-sonnet") || name_lower.contains("claude-3-5-sonnet") {
+        return "Sonnet 3.5".to_string();
+    }
+    if name_lower.contains("claude-3-opus") || name_lower.contains("claude-3.opus") {
+        return "Opus 3".to_string();
+    }
+    if name_lower.contains("claude-opus-4") || name_lower.contains("claude-4-opus") {
+        return "Opus 4".to_string();
+    }
+    if name_lower.contains("claude-sonnet-4") || name_lower.contains("claude-4-sonnet") {
+        return "Sonnet 4".to_string();
+    }
+    if name_lower.contains("claude-3-haiku") {
+        return "Haiku 3".to_string();
+    }
+    if name_lower.contains("gpt-4o") {
+        return "GPT-4o".to_string();
+    }
+    if name_lower.contains("gpt-4-turbo") {
+        return "GPT-4T".to_string();
+    }
+    if name_lower.contains("gpt-4") {
+        return "GPT-4".to_string();
+    }
+    if name_lower.contains("gemini-1.5-pro") || name_lower.contains("gemini-1-5-pro") {
+        return "Gemini Pro".to_string();
+    }
+    if name_lower.contains("gemini-1.5-flash") || name_lower.contains("gemini-1-5-flash") {
+        return "Gemini Flash".to_string();
+    }
+    if name_lower.contains("gemini-2") {
+        return "Gemini 2".to_string();
+    }
+
+    // Truncate long names
+    if name.len() > 15 {
+        format!("{}...", &name[..12])
+    } else {
+        name.to_string()
     }
 }

@@ -1059,6 +1059,7 @@ impl eframe::App for CodexBarApp {
                                                 date: date.clone(),
                                                 value: *cost,
                                                 tokens: None,
+                                                model_breakdowns: None,
                                             })
                                             .collect();
                                         let bar_color = Theme::TAB_ACTIVE;

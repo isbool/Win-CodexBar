@@ -219,6 +219,14 @@ impl TrayManager {
         let _ = self.tray_icon.set_tooltip(Some("CodexBar - Loading..."));
     }
 
+    /// Show morph animation on the tray icon (Unbraid effect)
+    /// Progress goes from 0.0 (knot/logo) to 1.0 (usage bars)
+    pub fn show_morph(&self, progress: f64, session_percent: f64, weekly_percent: f64) {
+        let icon = create_morph_icon(progress, session_percent, weekly_percent);
+        let _ = self.tray_icon.set_icon(Some(icon));
+        let _ = self.tray_icon.set_tooltip(Some("CodexBar - Loading..."));
+    }
+
     /// Show a surprise animation frame
     pub fn show_surprise(&self, animation: SurpriseAnimation, frame: u32, session_percent: f64, weekly_percent: f64) {
         let icon = create_surprise_icon(animation, frame, session_percent, weekly_percent);
@@ -688,6 +696,178 @@ fn create_surprise_icon(animation: SurpriseAnimation, frame: u32, session_percen
 
     let rgba = img.into_raw();
     Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("Failed to create icon")
+}
+
+/// Create a morph animation icon frame (logo/knot -> bars transition)
+/// This is the "Unbraid" animation from Swift - morphs from interlaced ribbons to usage bars
+fn create_morph_icon(progress: f64, session_percent: f64, weekly_percent: f64) -> Icon {
+    let mut img: RgbaImage = ImageBuffer::new(ICON_SIZE, ICON_SIZE);
+    let t = progress.clamp(0.0, 1.0) as f32;
+
+    // Fill with transparent background
+    for pixel in img.pixels_mut() {
+        *pixel = Rgba([0, 0, 0, 0]);
+    }
+
+    // Draw rounded background
+    let bg_color = Rgba([60, 60, 70, 255]);
+    for y in 2..ICON_SIZE - 2 {
+        for x in 2..ICON_SIZE - 2 {
+            img.put_pixel(x, y, bg_color);
+        }
+    }
+
+    let center_x = ICON_SIZE as f32 / 2.0;
+    let center_y = ICON_SIZE as f32 / 2.0;
+    let ribbon_color = Rgba([200, 200, 210, 255]);
+
+    // Morphing segments - three ribbons that transform into two bars
+    // Segment 1: Upper ribbon -> top bar
+    let seg1_start_y = center_y + 2.0;
+    let seg1_end_y = 11.0; // Final top bar position
+    let seg1_y = lerp(seg1_start_y, seg1_end_y, t);
+    let seg1_start_angle = -30.0_f32;
+    let seg1_end_angle = 0.0_f32;
+    let seg1_angle = lerp(seg1_start_angle, seg1_end_angle, t);
+    let seg1_start_len = 16.0_f32;
+    let seg1_end_len = 24.0_f32;
+    let seg1_len = lerp(seg1_start_len, seg1_end_len, t);
+    let seg1_thickness = lerp(3.5, 7.0, t);
+
+    draw_rotated_ribbon(&mut img, center_x, seg1_y, seg1_len, seg1_thickness, seg1_angle, ribbon_color);
+
+    // Segment 2: Lower ribbon -> bottom bar
+    let seg2_start_y = center_y - 2.0;
+    let seg2_end_y = 20.0; // Final bottom bar position
+    let seg2_y = lerp(seg2_start_y, seg2_end_y, t);
+    let seg2_start_angle = 210.0_f32 - 180.0; // Normalize to -30 to 30 range
+    let seg2_end_angle = 0.0_f32;
+    let seg2_angle = lerp(seg2_start_angle, seg2_end_angle, t);
+    let seg2_start_len = 16.0_f32;
+    let seg2_end_len = 24.0_f32;
+    let seg2_len = lerp(seg2_start_len, seg2_end_len, t);
+    let seg2_thickness = lerp(3.5, 5.0, t);
+
+    draw_rotated_ribbon(&mut img, center_x, seg2_y, seg2_len, seg2_thickness, seg2_angle, ribbon_color);
+
+    // Segment 3: Side ribbon that fades out
+    let seg3_alpha = ((1.0 - t * 1.1).max(0.0) * 255.0) as u8;
+    if seg3_alpha > 10 {
+        let seg3_y = lerp(center_y, center_y - 6.0, t);
+        let seg3_angle = lerp(90.0, 0.0, t);
+        let seg3_len = lerp(16.0, 8.0, t);
+        let seg3_thickness = lerp(3.5, 1.8, t);
+        let fading_color = Rgba([200, 200, 210, seg3_alpha]);
+        draw_rotated_ribbon(&mut img, center_x, seg3_y, seg3_len, seg3_thickness, seg3_angle, fading_color);
+    }
+
+    // Cross-fade in colored fill bars near the end of the morph
+    if t > 0.55 {
+        let bar_t = ((t - 0.55) / 0.45).min(1.0);
+        let bar_alpha = (bar_t * 200.0) as u8;
+
+        // Bar dimensions
+        let bar_left = 4u32;
+        let bar_right = ICON_SIZE - 4;
+        let bar_width = bar_right - bar_left;
+
+        // Session bar fill color
+        let session_level = UsageLevel::from_percent(session_percent);
+        let (sr, sg, sb) = session_level.color();
+        let session_fill = ((session_percent / 100.0) * bar_width as f64) as u32;
+
+        // Draw session bar fill with alpha
+        for y in 8..15 {
+            for x in bar_left..(bar_left + session_fill).min(bar_right) {
+                let existing = img.get_pixel(x, y);
+                let blended = blend_alpha(existing, &Rgba([sr, sg, sb, bar_alpha]));
+                img.put_pixel(x, y, blended);
+            }
+        }
+
+        // Weekly bar fill color
+        let weekly_level = UsageLevel::from_percent(weekly_percent);
+        let (wr, wg, wb) = weekly_level.color();
+        let weekly_fill = ((weekly_percent / 100.0) * bar_width as f64) as u32;
+
+        // Draw weekly bar fill with alpha
+        for y in 18..23 {
+            for x in bar_left..(bar_left + weekly_fill).min(bar_right) {
+                let existing = img.get_pixel(x, y);
+                let blended = blend_alpha(existing, &Rgba([wr, wg, wb, bar_alpha]));
+                img.put_pixel(x, y, blended);
+            }
+        }
+    }
+
+    let rgba = img.into_raw();
+    Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("Failed to create icon")
+}
+
+/// Draw a rotated ribbon/rounded rectangle
+fn draw_rotated_ribbon(img: &mut RgbaImage, cx: f32, cy: f32, length: f32, thickness: f32, angle_deg: f32, color: Rgba<u8>) {
+    let angle_rad = angle_deg.to_radians();
+    let cos_a = angle_rad.cos();
+    let sin_a = angle_rad.sin();
+
+    let half_len = length / 2.0;
+    let half_thick = thickness / 2.0;
+
+    // Draw the ribbon by iterating over a bounding box and checking if pixels are inside
+    let bound = (half_len + half_thick) as i32 + 2;
+
+    for dy in -bound..=bound {
+        for dx in -bound..=bound {
+            // Rotate point back to ribbon-local coordinates
+            let px = dx as f32 * cos_a + dy as f32 * sin_a;
+            let py = -dx as f32 * sin_a + dy as f32 * cos_a;
+
+            // Check if inside rounded rectangle
+            let in_length = px.abs() <= half_len;
+            let in_thickness = py.abs() <= half_thick;
+
+            // Rounded ends
+            let in_left_cap = (px + half_len).powi(2) + py.powi(2) <= half_thick.powi(2);
+            let in_right_cap = (px - half_len).powi(2) + py.powi(2) <= half_thick.powi(2);
+
+            if (in_length && in_thickness) || in_left_cap || in_right_cap {
+                let final_x = (cx + dx as f32) as i32;
+                let final_y = (cy + dy as f32) as i32;
+
+                if final_x >= 0 && final_x < ICON_SIZE as i32 && final_y >= 0 && final_y < ICON_SIZE as i32 {
+                    let existing = img.get_pixel(final_x as u32, final_y as u32);
+                    let blended = blend_alpha(existing, &color);
+                    img.put_pixel(final_x as u32, final_y as u32, blended);
+                }
+            }
+        }
+    }
+}
+
+/// Linear interpolation
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+/// Blend two colors with alpha
+fn blend_alpha(base: &Rgba<u8>, overlay: &Rgba<u8>) -> Rgba<u8> {
+    let oa = overlay[3] as f32 / 255.0;
+    let ba = base[3] as f32 / 255.0;
+
+    if oa < 0.01 {
+        return *base;
+    }
+
+    let out_a = oa + ba * (1.0 - oa);
+    if out_a < 0.01 {
+        return Rgba([0, 0, 0, 0]);
+    }
+
+    let r = (overlay[0] as f32 * oa + base[0] as f32 * ba * (1.0 - oa)) / out_a;
+    let g = (overlay[1] as f32 * oa + base[1] as f32 * ba * (1.0 - oa)) / out_a;
+    let b = (overlay[2] as f32 * oa + base[2] as f32 * ba * (1.0 - oa)) / out_a;
+
+    Rgba([r as u8, g as u8, b as u8, (out_a * 255.0) as u8])
 }
 
 /// Convert HSV to RGB (h: 0-360, s: 0-1, v: 0-1)

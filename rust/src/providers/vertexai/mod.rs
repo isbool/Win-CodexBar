@@ -3,6 +3,10 @@
 //! Fetches usage data from Google Cloud Vertex AI
 //! Uses Google Cloud credentials for authentication
 
+mod token_refresher;
+
+pub use token_refresher::{VertexAIOAuthCredentials, VertexAITokenRefresher, RefreshError};
+
 use async_trait::async_trait;
 use std::path::PathBuf;
 

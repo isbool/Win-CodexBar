@@ -2,6 +2,51 @@
 
 All notable changes to the Win-CodexBar Windows port will be documented in this file.
 
+## 1.0.2 — 2026-01-19
+
+### Port from Swift CodexBar
+Ported advanced features from the original Swift macOS CodexBar codebase:
+
+### Animations
+- **Icon Morphing**: New "Unbraid" animation that morphs from interlaced ribbons (knot) to usage bars
+  - Three-segment ribbon animation with smooth transitions
+  - Cross-fades to colored fill bars near the end of the morph
+  - Rotated ribbon drawing with proper alpha blending
+
+### Charts
+- **Model-Level Cost Breakdowns**: Interactive charts now show which AI models contributed to costs
+  - Added `ModelBreakdown` data structure for per-model cost tracking
+  - "Top: Sonnet 3.5 $X.XX · Opus 4 $Y.YY" format on hover
+  - Smart model name formatting (e.g., "claude-3.5-sonnet" → "Sonnet 3.5")
+
+### Provider Features
+- **Augment Session Keepalive**: Background task that monitors cookie expiration and refreshes sessions
+  - Check interval: 5 minutes, Refresh buffer: 5 minutes before expiry
+  - Rate-limited refresh attempts (minimum 2 minutes between attempts)
+  - Pings session endpoints to trigger cookie refresh
+
+- **VertexAI Token Refresher**: OAuth token refresh with caching
+  - Automatic token refresh before expiry (5-minute buffer)
+  - Token caching for reduced API calls
+  - JWT ID token email extraction
+
+- **MiniMax LocalStorage Import**: Extract session data from browser localStorage
+  - Supports Chrome, Edge, Brave browsers
+  - Parses LevelDB storage format
+  - Extracts access_token, user_id, group_id, email
+
+### System
+- **Web Probe Watchdog**: Process watchdog for managing browser automation
+  - Monitors child processes for timeout
+  - Automatic cleanup of orphaned processes
+  - Configurable timeout per process (default: 60s)
+  - Maximum concurrent processes limit (default: 10)
+
+### Technical
+- Added `ChartPoint::with_model_breakdowns()` builder method
+- New modules: `augment/keepalive.rs`, `vertexai/token_refresher.rs`, `minimax/local_storage.rs`, `browser/watchdog.rs`
+- All 40 tests pass
+
 ## 1.0.1 — 2025-01-19
 
 ### New Providers

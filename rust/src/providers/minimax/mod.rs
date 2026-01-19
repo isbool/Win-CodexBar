@@ -3,6 +3,10 @@
 //! Fetches usage data from MiniMax AI API
 //! MiniMax stores API keys locally or in environment
 
+mod local_storage;
+
+pub use local_storage::{MiniMaxLocalStorageImporter, MiniMaxSession, ImportError};
+
 use async_trait::async_trait;
 use std::path::PathBuf;
 
