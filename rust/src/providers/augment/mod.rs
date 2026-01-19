@@ -5,6 +5,8 @@
 
 mod keepalive;
 
+// Re-exports for future session management
+#[allow(unused_imports)]
 pub use keepalive::{AugmentSessionKeepalive, KeepaliveConfig};
 
 use async_trait::async_trait;

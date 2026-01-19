@@ -5,6 +5,8 @@
 
 mod token_refresher;
 
+// Re-exports for OAuth token refresh
+#[allow(unused_imports)]
 pub use token_refresher::{VertexAIOAuthCredentials, VertexAITokenRefresher, RefreshError};
 
 use async_trait::async_trait;
