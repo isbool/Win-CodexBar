@@ -3,6 +3,7 @@
 //! Fetches usage data from GitHub's Copilot API using stored OAuth token
 
 mod api;
+pub mod device_flow;
 
 use async_trait::async_trait;
 
