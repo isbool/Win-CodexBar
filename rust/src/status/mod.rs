@@ -3,9 +3,20 @@
 //! Fetches operational status from provider status pages
 
 #![allow(dead_code)]
+#![allow(unused_imports)]
+
+pub mod indicators;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+// Re-export indicator types for convenience
+pub use indicators::{
+    OverlayPosition, StatusOverlayConfig,
+    StatusLevel as IndicatorStatusLevel,
+    ProviderStatus as IndicatorProviderStatus,
+    StatuspageResponse, StatuspageStatus, StatuspageIncident,
+};
 
 /// Status level for a provider
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
