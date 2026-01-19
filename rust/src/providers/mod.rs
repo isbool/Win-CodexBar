@@ -15,6 +15,7 @@ pub mod kimi;
 pub mod kimik2;
 pub mod kiro;
 pub mod minimax;
+pub mod openai;
 pub mod opencode;
 pub mod synthetic;
 pub mod vertexai;
