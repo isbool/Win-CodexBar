@@ -10,6 +10,7 @@
 
 pub mod autostart;
 pub mod cost;
+pub mod tty_runner;
 pub mod usage;
 
 use clap::{Parser, Subcommand};

@@ -10,7 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- (Next features go here)
+- **Wave 4 Feature Port from Swift**: Complete porting of remaining Swift CodexBar core features:
+  - **Session Quota Notifications**: Depleted/restored state tracking with alerts
+  - **Cost Usage Pricing**: Model-specific token pricing (GPT-5, Claude Opus/Sonnet/Haiku)
+  - **JSONL Scanner**: Incremental log file parsing with file-level caching for Codex/Claude sessions
+  - **OpenAI Dashboard Models**: Usage breakdown and credits data structures
+  - **Cookie Header Cache**: Cookie normalization and caching with staleness tracking
+  - **Provider Fetch Plan**: Orchestrated fetching with strategy pipelines and fallback logic
+  - **Widget Snapshot**: Data export structures for external widget integrations
+  - **TTY Command Runner**: Windows-optimized command execution with ConPTY-style features
+- New modules: `session_quota`, `cost_pricing`, `jsonl_scanner`, `openai_dashboard`, `cookie_cache`, `fetch_plan`, `widget_snapshot`, `tty_runner`
 
 ### Changed
 - (Changes go here)
