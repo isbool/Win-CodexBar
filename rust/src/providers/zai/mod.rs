@@ -3,6 +3,12 @@
 //! Fetches usage data from Zed's AI service
 //! Zed stores credentials and usage info locally
 
+pub mod mcp_details;
+
+// Re-exports for MCP details menu
+#[allow(unused_imports)]
+pub use mcp_details::{McpDetailsMenu, ZaiLimitEntry, ZaiLimitType, ZaiLimitUnit, ZaiUsageDetail, ZaiUsageSnapshot};
+
 use async_trait::async_trait;
 use std::path::PathBuf;
 
