@@ -47,3 +47,7 @@ tmpclaude-*
 *.swo
 dist/
 nul
+
+# Local scripts and env files
+*.ps1
+version.env
