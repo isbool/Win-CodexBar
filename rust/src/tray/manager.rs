@@ -2,6 +2,8 @@
 //!
 //! Creates a system tray icon that shows session and weekly usage as two horizontal bars
 
+#![allow(dead_code)]
+
 use image::{ImageBuffer, Rgba, RgbaImage};
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
