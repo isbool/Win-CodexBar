@@ -1,165 +1,204 @@
-//! Theme: "Midnight Terminal" - Dark developer aesthetic
+//! Theme: Modern Refined Dark
 //!
-//! A bold, distinctive dark theme with vibrant neon accents,
-//! glassmorphism effects, and glowing status indicators.
+//! A rich, sophisticated dark theme with depth and atmosphere.
+//! Inspired by premium apps like Linear, Raycast, and Arc.
 
 #![allow(dead_code)]
 
 use egui::Color32;
 
-/// Midnight Terminal Theme
+/// Modern Refined Dark Theme
 pub struct Theme;
 
 impl Theme {
     // ═══════════════════════════════════════════════════════════════════
-    // BACKGROUNDS - Deep charcoal with subtle warmth
+    // BACKGROUNDS - Rich, layered dark palette with subtle warmth
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Main background - deep charcoal
-    pub const BG_PRIMARY: Color32 = Color32::from_rgb(18, 18, 24);
+    /// Deep background - rich charcoal with subtle warmth
+    pub const BG_PRIMARY: Color32 = Color32::from_rgb(18, 18, 22);
 
-    /// Secondary background - slightly lighter
-    pub const BG_SECONDARY: Color32 = Color32::from_rgb(24, 24, 32);
+    /// Secondary background - elevated layer
+    pub const BG_SECONDARY: Color32 = Color32::from_rgb(24, 24, 30);
 
-    /// Card background - glassmorphism dark
-    pub const CARD_BG: Color32 = Color32::from_rgb(32, 32, 42);
+    /// Tertiary background - for nested elements
+    pub const BG_TERTIARY: Color32 = Color32::from_rgb(32, 32, 40);
 
-    /// Card background hover
-    pub const CARD_BG_HOVER: Color32 = Color32::from_rgb(40, 40, 52);
+    /// Card/panel background - glass-like elevated surface
+    pub const CARD_BG: Color32 = Color32::from_rgb(28, 28, 36);
 
-    /// Elevated surface
-    pub const SURFACE_ELEVATED: Color32 = Color32::from_rgb(45, 45, 58);
+    /// Card background on hover - subtle lift
+    pub const CARD_BG_HOVER: Color32 = Color32::from_rgb(38, 38, 48);
 
-    // ═══════════════════════════════════════════════════════════════════
-    // ACCENT COLORS - Vibrant neon palette
-    // ═══════════════════════════════════════════════════════════════════
+    /// Elevated surface (modals, popovers)
+    pub const SURFACE_ELEVATED: Color32 = Color32::from_rgb(36, 36, 46);
 
-    /// Primary accent - Electric cyan
-    pub const ACCENT_PRIMARY: Color32 = Color32::from_rgb(0, 212, 255);
-
-    /// Secondary accent - Hot magenta
-    pub const ACCENT_SECONDARY: Color32 = Color32::from_rgb(255, 0, 128);
-
-    /// Tertiary accent - Lime green
-    pub const ACCENT_TERTIARY: Color32 = Color32::from_rgb(0, 255, 136);
-
-    /// Accent muted - Soft purple
-    pub const ACCENT_MUTED: Color32 = Color32::from_rgb(138, 43, 226);
+    /// Input field background
+    pub const INPUT_BG: Color32 = Color32::from_rgb(22, 22, 28);
 
     // ═══════════════════════════════════════════════════════════════════
-    // TAB COLORS
+    // ACCENT COLORS - Vibrant, modern palette
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Tab container - dark glass
-    pub const TAB_CONTAINER: Color32 = Color32::from_rgb(28, 28, 38);
+    /// Primary accent - Electric blue
+    pub const ACCENT_PRIMARY: Color32 = Color32::from_rgb(59, 130, 246);
 
-    /// Tab inactive
-    pub const TAB_INACTIVE: Color32 = Color32::from_rgb(38, 38, 48);
+    /// Primary accent hover
+    pub const ACCENT_HOVER: Color32 = Color32::from_rgb(96, 165, 250);
 
-    /// Tab active - gradient start (we'll simulate with solid)
-    pub const TAB_ACTIVE: Color32 = Color32::from_rgb(0, 180, 216);
+    /// Primary accent muted
+    pub const ACCENT_MUTED: Color32 = Color32::from_rgb(59, 130, 246);
 
-    /// Tab text inactive
+    /// Secondary accent - Soft purple
+    pub const ACCENT_SECONDARY: Color32 = Color32::from_rgb(139, 92, 246);
+
+    /// Tertiary accent - Subtle glow
+    pub const ACCENT_TERTIARY: Color32 = Color32::from_rgb(99, 102, 241);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB COLORS - Refined tab styling
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Tab container background
+    pub const TAB_CONTAINER: Color32 = Color32::from_rgb(22, 22, 28);
+
+    /// Tab inactive state
+    pub const TAB_INACTIVE: Color32 = Color32::from_rgb(32, 32, 40);
+
+    /// Tab active state
+    pub const TAB_ACTIVE: Color32 = Color32::from_rgb(59, 130, 246);
+
+    /// Tab text when inactive
     pub const TAB_TEXT_INACTIVE: Color32 = Color32::from_rgb(120, 120, 140);
 
-    /// Tab text active
+    /// Tab text when active
     pub const TAB_TEXT_ACTIVE: Color32 = Color32::WHITE;
 
     // ═══════════════════════════════════════════════════════════════════
-    // TEXT COLORS
+    // TEXT COLORS - Clear hierarchy with soft tones
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Primary text - bright white
+    /// Primary text - Soft white with warmth
     pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(240, 240, 245);
 
-    /// Secondary text
-    #[allow(dead_code)]
-    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(180, 180, 195);
+    /// Secondary text - Labels, descriptions
+    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(160, 160, 180);
 
-    /// Muted text
+    /// Muted text - Hints, placeholders
     pub const TEXT_MUTED: Color32 = Color32::from_rgb(100, 100, 120);
 
-    /// Dimmed text
+    /// Dimmed text - Disabled states
     pub const TEXT_DIM: Color32 = Color32::from_rgb(70, 70, 85);
 
+    /// Section header text
+    pub const TEXT_SECTION: Color32 = Color32::from_rgb(120, 120, 140);
+
     // ═══════════════════════════════════════════════════════════════════
-    // BORDERS & SEPARATORS
+    // BORDERS & SEPARATORS - Subtle, refined
     // ═══════════════════════════════════════════════════════════════════
 
     /// Separator line
-    pub const SEPARATOR: Color32 = Color32::from_rgb(50, 50, 65);
+    pub const SEPARATOR: Color32 = Color32::from_rgb(45, 45, 55);
 
-    /// Card border - subtle glow
-    pub const CARD_BORDER: Color32 = Color32::from_rgb(60, 60, 80);
+    /// Card/panel border - subtle glass effect
+    pub const CARD_BORDER: Color32 = Color32::from_rgb(50, 50, 65);
 
-    /// Card border accent
-    pub const CARD_BORDER_ACCENT: Color32 = Color32::from_rgb(0, 150, 180);
+    /// Focused/accent border
+    pub const CARD_BORDER_ACCENT: Color32 = Color32::from_rgb(59, 130, 246);
+
+    /// Subtle border for inputs
+    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(55, 55, 70);
 
     // ═══════════════════════════════════════════════════════════════════
-    // USAGE STATUS COLORS - Vibrant with glow effect
+    // USAGE/STATUS COLORS - Vibrant, clear
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Green - excellent (0-25%)
-    pub const GREEN: Color32 = Color32::from_rgb(0, 255, 136);
+    /// Green - Success (0-50% usage)
+    pub const GREEN: Color32 = Color32::from_rgb(34, 197, 94);
     pub const USAGE_GREEN: Color32 = Self::GREEN;
 
-    /// Cyan - good (25-50%)
-    pub const CYAN: Color32 = Color32::from_rgb(0, 212, 255);
+    /// Blue - Primary/Info
+    pub const BLUE: Color32 = Color32::from_rgb(59, 130, 246);
 
-    /// Yellow - caution (50-75%)
-    pub const YELLOW: Color32 = Color32::from_rgb(255, 214, 0);
+    /// Yellow - Caution (50-75% usage)
+    pub const YELLOW: Color32 = Color32::from_rgb(250, 204, 21);
 
-    /// Orange - warning (75-90%)
-    pub const ORANGE: Color32 = Color32::from_rgb(255, 140, 0);
+    /// Orange - Warning (75-90% usage)
+    pub const ORANGE: Color32 = Color32::from_rgb(251, 146, 60);
     pub const USAGE_ORANGE: Color32 = Self::ORANGE;
 
-    /// Red - critical (90-100%)
-    pub const RED: Color32 = Color32::from_rgb(255, 60, 80);
+    /// Red - Critical (90-100% usage)
+    pub const RED: Color32 = Color32::from_rgb(239, 68, 68);
 
-    /// Progress bar track
-    pub const PROGRESS_TRACK: Color32 = Color32::from_rgb(40, 40, 55);
+    /// Cyan - Info/credits
+    pub const CYAN: Color32 = Color32::from_rgb(34, 211, 238);
+
+    /// Progress bar track - subtle with depth
+    pub const PROGRESS_TRACK: Color32 = Color32::from_rgb(40, 40, 52);
 
     // ═══════════════════════════════════════════════════════════════════
-    // SPECIAL EFFECTS (use methods for alpha colors)
+    // BADGES - Status indicators with glow
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Get shadow color
+    /// Success badge
+    pub const BADGE_SUCCESS: Color32 = Color32::from_rgb(34, 197, 94);
+
+    /// Warning badge
+    pub const BADGE_WARNING: Color32 = Color32::from_rgb(251, 146, 60);
+
+    /// Error badge
+    pub const BADGE_ERROR: Color32 = Color32::from_rgb(239, 68, 68);
+
+    /// Info badge
+    pub const BADGE_INFO: Color32 = Color32::from_rgb(59, 130, 246);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SPECIAL EFFECTS - Depth and atmosphere
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Get shadow color - deeper for more dimension
     pub fn shadow() -> Color32 {
         Color32::from_rgba_unmultiplied(0, 0, 0, 80)
     }
 
-    /// Get glow overlay color
+    /// Get subtle overlay for selected states
+    pub fn selection_overlay() -> Color32 {
+        Color32::from_rgba_unmultiplied(59, 130, 246, 25)
+    }
+
+    /// Hover overlay - gentle highlight
+    pub fn hover_overlay() -> Color32 {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 6)
+    }
+
+    /// Glow overlay for active elements
     pub fn glow_overlay() -> Color32 {
-        Color32::from_rgba_unmultiplied(0, 212, 255, 20)
+        Color32::from_rgba_unmultiplied(59, 130, 246, 20)
     }
 
-    /// Get progress glow color
+    /// Progress glow
     pub fn progress_glow() -> Color32 {
-        Color32::from_rgba_unmultiplied(0, 212, 255, 30)
+        Color32::from_rgba_unmultiplied(59, 130, 246, 30)
     }
 
-    /// Success badge
-    pub const BADGE_SUCCESS: Color32 = Color32::from_rgb(0, 200, 120);
+    /// Gradient start (for backgrounds)
+    pub fn gradient_start() -> Color32 {
+        Color32::from_rgba_unmultiplied(59, 130, 246, 8)
+    }
 
-    /// Warning badge
-    pub const BADGE_WARNING: Color32 = Color32::from_rgb(255, 180, 0);
-
-    /// Error badge
-    pub const BADGE_ERROR: Color32 = Color32::from_rgb(255, 70, 90);
-
-    /// Info badge
-    pub const BADGE_INFO: Color32 = Color32::from_rgb(80, 160, 255);
+    /// Gradient end
+    pub fn gradient_end() -> Color32 {
+        Color32::from_rgba_unmultiplied(139, 92, 246, 5)
+    }
 
     // ═══════════════════════════════════════════════════════════════════
-    // METHODS
+    // METHODS - Usage-based coloring
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Get usage color based on percentage - vibrant gradient
+    /// Get usage color based on percentage
     pub fn usage_color(percent: f64) -> Color32 {
-        if percent <= 25.0 {
+        if percent <= 50.0 {
             Self::GREEN
-        } else if percent <= 50.0 {
-            Self::CYAN
         } else if percent <= 75.0 {
             Self::YELLOW
         } else if percent <= 90.0 {
@@ -170,30 +209,43 @@ impl Theme {
     }
 
     /// Get a dimmed version of usage color for track
-    pub fn usage_track_color(percent: f64) -> Color32 {
-        let base = Self::usage_color(percent);
-        Color32::from_rgba_unmultiplied(
-            base.r() / 4,
-            base.g() / 4,
-            base.b() / 4,
-            60,
-        )
+    pub fn usage_track_color(_percent: f64) -> Color32 {
+        Self::PROGRESS_TRACK
     }
 
-    /// Get glow color for usage
+    /// Get subtle glow color for usage
     pub fn usage_glow_color(percent: f64) -> Color32 {
         let base = Self::usage_color(percent);
-        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 40)
+        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 35)
+    }
+
+    /// Get menu item hover background
+    pub fn menu_hover() -> Color32 {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 8)
+    }
+
+    /// Button gradient top
+    pub fn button_gradient_top() -> Color32 {
+        Color32::from_rgb(70, 145, 255)
+    }
+
+    /// Button gradient bottom
+    pub fn button_gradient_bottom() -> Color32 {
+        Color32::from_rgb(50, 120, 230)
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROVIDER ICONS - Clean symbols with personality
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Provider icons - distinctive symbols
 pub fn provider_icon(name: &str) -> &'static str {
     match name.to_lowercase().as_str() {
         "codex" => "◆",
         "claude" => "◈",
-        "cursor" => "▶",
-        "gemini" => "✧",
+        "cursor" => "▸",
+        "gemini" => "✦",
         "copilot" => "⬡",
         "antigravity" => "◉",
         "factory" | "droid" => "◎",
@@ -203,33 +255,77 @@ pub fn provider_icon(name: &str) -> &'static str {
         "augment" => "A",
         "minimax" => "M",
         "opencode" => "○",
-        "kimi" => "☾",
-        "kimik2" | "kimi k2" => "☾",
+        "kimi" => "☽",
+        "kimik2" | "kimi k2" => "☽",
         "amp" => "⚡",
         "synthetic" => "◇",
+        "jetbrains" | "jetbrains ai" => "J",
         _ => "●",
     }
 }
 
-/// Provider brand colors
+/// Provider brand colors - vibrant and recognizable
 pub fn provider_color(name: &str) -> Color32 {
     match name.to_lowercase().as_str() {
-        "codex" => Color32::from_rgb(16, 163, 127),   // OpenAI green
-        "claude" => Color32::from_rgb(204, 119, 68),   // Anthropic orange
-        "cursor" => Color32::from_rgb(138, 43, 226),   // Purple
-        "gemini" => Color32::from_rgb(66, 133, 244),   // Google blue
-        "copilot" => Color32::from_rgb(36, 41, 47),    // GitHub dark
-        "antigravity" => Color32::from_rgb(0, 212, 255), // Cyan
-        "factory" | "droid" => Color32::from_rgb(0, 200, 150),
-        "zai" | "z.ai" => Color32::from_rgb(255, 100, 50),
-        "kiro" => Color32::from_rgb(255, 165, 0),
-        "vertexai" | "vertex ai" => Color32::from_rgb(66, 133, 244),
-        "augment" => Color32::from_rgb(100, 200, 255),
-        "minimax" => Color32::from_rgb(255, 100, 150),
-        "opencode" => Color32::from_rgb(200, 200, 200),
-        "kimi" | "kimik2" | "kimi k2" => Color32::from_rgb(100, 100, 255),
-        "amp" => Color32::from_rgb(255, 90, 60),       // Sourcegraph orange-red
-        "synthetic" => Color32::from_rgb(160, 120, 255), // Synthetic purple
+        "codex" => Color32::from_rgb(16, 185, 129),       // Emerald green
+        "claude" => Color32::from_rgb(217, 119, 87),       // Warm terracotta
+        "cursor" => Color32::from_rgb(147, 112, 219),      // Medium purple
+        "gemini" => Color32::from_rgb(66, 153, 225),       // Sky blue
+        "copilot" => Color32::from_rgb(139, 148, 158),     // Slate gray
+        "antigravity" => Color32::from_rgb(56, 189, 248),  // Bright cyan
+        "factory" | "droid" => Color32::from_rgb(52, 211, 153),
+        "zai" | "z.ai" => Color32::from_rgb(251, 146, 60),
+        "kiro" => Color32::from_rgb(251, 191, 36),
+        "vertexai" | "vertex ai" => Color32::from_rgb(96, 165, 250),
+        "augment" => Color32::from_rgb(125, 211, 252),
+        "minimax" => Color32::from_rgb(244, 114, 182),
+        "opencode" => Color32::from_rgb(203, 213, 225),
+        "kimi" | "kimik2" | "kimi k2" => Color32::from_rgb(129, 140, 248),
+        "amp" => Color32::from_rgb(248, 113, 113),
+        "synthetic" => Color32::from_rgb(167, 139, 250),
+        "jetbrains" | "jetbrains ai" => Color32::from_rgb(252, 165, 165),
         _ => Theme::ACCENT_PRIMARY,
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPACING CONSTANTS - Generous, comfortable layout
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Spacing constants for consistent layout
+pub struct Spacing;
+
+impl Spacing {
+    pub const XXS: f32 = 4.0;
+    pub const XS: f32 = 8.0;
+    pub const SM: f32 = 12.0;
+    pub const MD: f32 = 16.0;
+    pub const LG: f32 = 24.0;
+    pub const XL: f32 = 32.0;
+    pub const XXL: f32 = 48.0;
+}
+
+/// Rounding constants - softer, modern feel
+pub struct Radius;
+
+impl Radius {
+    pub const XS: f32 = 4.0;
+    pub const SM: f32 = 6.0;
+    pub const MD: f32 = 10.0;
+    pub const LG: f32 = 14.0;
+    pub const XL: f32 = 18.0;
+    pub const PILL: f32 = 100.0;
+}
+
+/// Font sizes - macOS-inspired clear hierarchy
+pub struct FontSize;
+
+impl FontSize {
+    pub const XS: f32 = 11.0;
+    pub const SM: f32 = 12.0;
+    pub const BASE: f32 = 13.0;
+    pub const MD: f32 = 14.0;
+    pub const LG: f32 = 16.0;
+    pub const XL: f32 = 18.0;
+    pub const XXL: f32 = 22.0;
 }
