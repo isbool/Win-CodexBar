@@ -1,5 +1,5 @@
-//! Main egui application - macOS-style menubar popup
-//! Clean, working implementation with proper layout
+//! Main egui application - Modern refined menubar popup
+//! Clean, spacious design with rich visual hierarchy
 
 use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, Rect, RichText, Rounding, Stroke, Vec2};
 use std::sync::{Arc, Mutex};
@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::charts::{ChartPoint, CostHistoryChart};
 use super::preferences::PreferencesWindow;
-use super::theme::{provider_icon, Theme};
+use super::theme::{provider_color, provider_icon, FontSize, Radius, Spacing, Theme};
 use crate::core::{FetchContext, Provider, ProviderId, ProviderFetchResult, RateWindow};
 use crate::cost_scanner::get_daily_cost_history;
 use crate::login::{LoginOutcome, LoginPhase};
@@ -15,15 +15,14 @@ use crate::providers::*;
 use crate::settings::{ManualCookies, Settings};
 use crate::shortcuts::ShortcutManager;
 use crate::status::{fetch_provider_status, get_status_page_url, StatusLevel};
-use crate::tray::{IconOverlay, LoadingPattern, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction, WeeklyIndicatorColors};
+use crate::tray::{IconOverlay, LoadingPattern, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction};
 use crate::updater::{self, UpdateInfo};
-
-const MAIN_PROVIDER_COUNT: usize = 6;
 
 #[derive(Clone, Debug)]
 pub struct ProviderData {
     pub name: String,
     pub display_name: String,
+    pub account: Option<String>,  // Account email for display
     pub session_percent: Option<f64>,
     pub session_reset: Option<String>,
     pub weekly_percent: Option<f64>,
@@ -33,35 +32,25 @@ pub struct ProviderData {
     pub plan: Option<String>,
     pub error: Option<String>,
     pub dashboard_url: Option<String>,
-    // Pace info: difference from expected usage (negative = behind, positive = ahead)
     pub pace_percent: Option<f64>,
     pub pace_lasts_to_reset: bool,
-    // Cost info
     pub cost_used: Option<String>,
     pub cost_limit: Option<String>,
     pub cost_period: Option<String>,
-    // Credits info (separate from cost - shows as a bar)
     pub credits_remaining: Option<f64>,
     pub credits_percent: Option<f64>,
-    // Status/incident info
     pub status_level: StatusLevel,
     pub status_description: Option<String>,
-    // Cost history for charts (date -> cost USD)
     pub cost_history: Vec<(String, f64)>,
 }
 
 impl ProviderData {
     fn from_result(id: ProviderId, result: &ProviderFetchResult, metadata: &crate::core::ProviderMetadata) -> Self {
         let snapshot = &result.usage;
-        // Calculate pace based on primary rate window
         let (pace_percent, pace_lasts) = calculate_pace(&snapshot.primary);
 
-        // Extract cost info if available
         let (cost_used, cost_limit, cost_period, credits_remaining, credits_percent) = if let Some(ref cost) = result.cost {
-            // Check if this is a "Credits" type (Codex) vs regular cost
             if cost.period == "Credits" {
-                // For credits, `used` is actually the balance (credits remaining)
-                // Full scale is 1000 credits per the original macOS app
                 const FULL_SCALE_CREDITS: f64 = 1000.0;
                 let remaining = cost.used;
                 let percent = (remaining / FULL_SCALE_CREDITS * 100.0).clamp(0.0, 100.0);
@@ -82,6 +71,7 @@ impl ProviderData {
         Self {
             name: id.cli_name().to_string(),
             display_name: id.display_name().to_string(),
+            account: snapshot.account_email.clone(),  // Account email if available
             session_percent: Some(snapshot.primary.used_percent),
             session_reset: snapshot.primary.resets_at.map(format_reset_time),
             weekly_percent: snapshot.secondary.as_ref().map(|s| s.used_percent),
@@ -98,9 +88,9 @@ impl ProviderData {
             cost_period,
             credits_remaining,
             credits_percent,
-            status_level: StatusLevel::Unknown, // Will be updated by status fetch
+            status_level: StatusLevel::Unknown,
             status_description: None,
-            cost_history: Vec::new(), // TODO: Populate from cost scanner
+            cost_history: Vec::new(),
         }
     }
 
@@ -108,6 +98,7 @@ impl ProviderData {
         Self {
             name: id.cli_name().to_string(),
             display_name: id.display_name().to_string(),
+            account: None,
             session_percent: None,
             session_reset: None,
             weekly_percent: None,
@@ -151,10 +142,6 @@ fn format_reset_time(reset: chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
-/// Calculate pace: how much you're ahead/behind expected usage
-/// Returns (pace_percent, lasts_to_reset)
-/// pace_percent: negative means behind (using less than expected), positive means ahead
-/// lasts_to_reset: true if current usage rate will last until reset
 fn calculate_pace(rate_window: &RateWindow) -> (Option<f64>, bool) {
     let Some(window_minutes) = rate_window.window_minutes else {
         return (None, false);
@@ -178,21 +165,14 @@ fn calculate_pace(rate_window: &RateWindow) -> (Option<f64>, bool) {
         return (None, false);
     }
 
-    // Expected usage at this point in the window (linear model)
     let expected_percent = (elapsed_minutes / total_minutes) * 100.0;
     let actual_percent = rate_window.used_percent;
-
-    // Pace: actual - expected
-    // Negative = behind (using less), Positive = ahead (using more)
     let pace = actual_percent - expected_percent;
-
-    // Will usage last to reset? If actual < expected, yes
     let lasts_to_reset = actual_percent <= expected_percent;
 
     (Some(pace), lasts_to_reset)
 }
 
-/// Generate a random delay for the next surprise animation (30 seconds to 5 minutes)
 fn random_surprise_delay() -> Duration {
     use rand::Rng;
     let mut rng = rand::rng();
@@ -206,15 +186,12 @@ struct SharedState {
     is_refreshing: bool,
     loading_pattern: LoadingPattern,
     loading_phase: f64,
-    // Surprise animation state
     surprise_animation: Option<SurpriseAnimation>,
     surprise_frame: u32,
     next_surprise_time: Instant,
-    // Update check state
     update_available: Option<UpdateInfo>,
     update_checked: bool,
     update_dismissed: bool,
-    // Login state
     login_provider: Option<String>,
     login_phase: LoginPhase,
     login_message: Option<String>,
@@ -250,12 +227,12 @@ impl CodexBarApp {
         let settings = Settings::load();
         let enabled_ids = settings.get_enabled_provider_ids();
 
-        // Create placeholder providers immediately so UI shows right away
         let placeholders: Vec<ProviderData> = enabled_ids
             .iter()
             .map(|&id| ProviderData {
                 name: id.cli_name().to_string(),
                 display_name: id.display_name().to_string(),
+                account: None,
                 session_percent: None,
                 session_reset: None,
                 weekly_percent: None,
@@ -280,7 +257,7 @@ impl CodexBarApp {
 
         let state = Arc::new(Mutex::new(SharedState {
             providers: placeholders,
-            last_refresh: Instant::now() - Duration::from_secs(999), // Force immediate refresh
+            last_refresh: Instant::now() - Duration::from_secs(999),
             is_refreshing: false,
             loading_pattern: LoadingPattern::random(),
             loading_phase: 0.0,
@@ -360,12 +337,10 @@ impl CodexBarApp {
 
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                // Spawn all provider fetches concurrently
                 let handles: Vec<_> = enabled_ids
                     .iter()
                     .enumerate()
                     .map(|(idx, &id)| {
-                        // Create fetch context with manual cookie if available
                         let manual_cookie = manual_cookies.get(id.cli_name()).map(|s| s.to_string());
                         let ctx = FetchContext {
                             manual_cookie_header: manual_cookie,
@@ -377,7 +352,6 @@ impl CodexBarApp {
                             let metadata = provider.metadata().clone();
                             let provider_name = id.cli_name().to_string();
 
-                            // Fetch usage and status in parallel
                             let (usage_result, status_result) = tokio::join!(
                                 async {
                                     tokio::time::timeout(
@@ -393,26 +367,22 @@ impl CodexBarApp {
                                 }
                             );
 
-                            // Create provider data from usage result
                             let mut result = match usage_result {
                                 Ok(Ok(result)) => ProviderData::from_result(id, &result, &metadata),
                                 Ok(Err(e)) => ProviderData::from_error(id, e.to_string()),
                                 Err(_) => ProviderData::from_error(id, "Timeout".to_string()),
                             };
 
-                            // Update status from status result
                             if let Ok(Some(status)) = status_result {
                                 result.status_level = status.level;
                                 result.status_description = Some(status.description);
                             }
 
-                            // Populate cost history for providers that support it
                             let provider_name_lower = provider_name.to_lowercase();
                             if provider_name_lower == "codex" || provider_name_lower == "claude" {
                                 result.cost_history = get_daily_cost_history(&provider_name_lower, 30);
                             }
 
-                            // Update UI immediately as each provider completes
                             if let Ok(mut s) = state.lock() {
                                 if idx < s.providers.len() {
                                     s.providers[idx] = result;
@@ -422,7 +392,6 @@ impl CodexBarApp {
                     })
                     .collect();
 
-                // Wait for all to complete
                 for handle in handles {
                     let _ = handle.await;
                 }
@@ -439,7 +408,6 @@ impl CodexBarApp {
         let state = Arc::clone(&self.state);
         let provider = provider_name.to_string();
 
-        // Set initial login state
         if let Ok(mut s) = state.lock() {
             s.login_provider = Some(provider.clone());
             s.login_phase = LoginPhase::Requesting;
@@ -471,7 +439,6 @@ impl CodexBarApp {
                     _ => return,
                 };
 
-                // Update state with result
                 if let Ok(mut s) = state.lock() {
                     s.login_auth_url = result.auth_link.clone();
                     match result.outcome {
@@ -494,7 +461,6 @@ impl CodexBarApp {
                     }
                 }
 
-                // Auto-clear after a delay on success
                 if matches!(result.outcome, LoginOutcome::Success) {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     if let Ok(mut s) = state.lock() {
@@ -528,25 +494,24 @@ fn create_provider(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::KimiK2 => Box::new(KimiK2Provider::new()),
         ProviderId::Amp => Box::new(AmpProvider::new()),
         ProviderId::Synthetic => Box::new(SyntheticProvider::new()),
+        ProviderId::JetBrains => Box::new(JetBrainsProvider::new()),
     }
 }
 
 impl eframe::App for CodexBarApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Check keyboard shortcuts - process ALL pending events
+        // Check keyboard shortcuts
         if let Some(ref shortcut_mgr) = self.shortcut_manager {
             while shortcut_mgr.check_events() {
-                // Shortcut pressed - bring window to front and make visible
                 tracing::info!("Keyboard shortcut triggered - focusing window");
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
         }
 
-        // Auto-refresh check (skip if interval is 0 = Manual)
+        // Auto-refresh check
         let should_refresh = {
             if self.settings.refresh_interval_secs == 0 {
-                // Manual mode - no auto refresh
                 false
             } else if let Ok(state) = self.state.lock() {
                 !state.is_refreshing && state.last_refresh.elapsed() > Duration::from_secs(self.settings.refresh_interval_secs)
@@ -561,21 +526,17 @@ impl eframe::App for CodexBarApp {
         // Get state
         let (providers, is_refreshing, loading_pattern, loading_phase, surprise_state, update_info, login_state) = {
             if let Ok(mut state) = self.state.lock() {
-                // Advance loading animation phase
                 if state.is_refreshing {
-                    state.loading_phase += 0.05; // Advance animation
+                    state.loading_phase += 0.05;
                     if state.loading_phase > 1.0 {
                         state.loading_phase -= 1.0;
                     }
                 }
 
-                // Handle surprise animations (only if enabled in settings)
                 let surprise = if self.settings.surprise_animations && !state.is_refreshing {
                     if let Some(anim) = state.surprise_animation {
-                        // Advance animation frame
                         state.surprise_frame += 1;
                         if state.surprise_frame >= anim.duration_frames() {
-                            // Animation complete
                             state.surprise_animation = None;
                             state.surprise_frame = 0;
                             state.next_surprise_time = Instant::now() + random_surprise_delay();
@@ -584,7 +545,6 @@ impl eframe::App for CodexBarApp {
                             Some((anim, state.surprise_frame))
                         }
                     } else if Instant::now() >= state.next_surprise_time {
-                        // Time for a new surprise!
                         let anim = SurpriseAnimation::random();
                         state.surprise_animation = Some(anim);
                         state.surprise_frame = 0;
@@ -596,14 +556,12 @@ impl eframe::App for CodexBarApp {
                     None
                 };
 
-                // Get update info if not dismissed
                 let update = if state.update_dismissed {
                     None
                 } else {
                     state.update_available.clone()
                 };
 
-                // Get login state
                 let login_state = (
                     state.login_provider.clone(),
                     state.login_phase,
@@ -619,27 +577,23 @@ impl eframe::App for CodexBarApp {
         let (login_provider, login_phase, login_message) = login_state;
         let is_logging_in = login_provider.is_some() && login_phase != LoginPhase::Idle;
 
-        // Request repaint - faster during loading, animation, login, or to catch hotkeys
         ctx.request_repaint_after(if is_refreshing || surprise_state.is_some() || is_logging_in {
-            Duration::from_millis(50) // ~20fps for smooth animation
+            Duration::from_millis(50)
         } else {
-            Duration::from_millis(200) // Check for hotkeys frequently
+            Duration::from_millis(200)
         });
 
-        // Update tray icon with selected provider's usage
+        // Update tray icon
         if let Some(ref tray) = self.tray_manager {
             if is_refreshing {
-                // Show loading animation
                 tray.show_loading(loading_pattern, loading_phase);
             } else if let Some((anim, frame)) = surprise_state {
-                // Show surprise animation (only in single provider mode for now)
                 if let Some(provider) = providers.get(self.selected_provider) {
                     let session = provider.session_percent.unwrap_or(0.0);
                     let weekly = provider.weekly_percent.unwrap_or(session);
                     tray.show_surprise(anim, frame, session, weekly);
                 }
             } else if self.settings.merge_tray_icons {
-                // Merged mode: show all providers in one icon
                 let provider_usages: Vec<ProviderUsage> = providers
                     .iter()
                     .filter(|p| p.session_percent.is_some())
@@ -651,21 +605,15 @@ impl eframe::App for CodexBarApp {
                     .collect();
                 tray.update_merged(&provider_usages);
             } else {
-                // Single provider mode with overlay support
                 if let Some(provider) = providers.get(self.selected_provider) {
                     let session = provider.session_percent.unwrap_or(0.0);
                     let weekly = provider.weekly_percent.unwrap_or(session);
-
-                    // Check for credits mode: weekly exhausted but credits remain
-                    // Weekly is exhausted if used >= 99% (showing almost 100%)
                     let weekly_exhausted = weekly >= 99.0;
                     let has_credits = provider.credits_percent.is_some() && provider.credits_percent.unwrap_or(0.0) > 0.0;
 
                     if weekly_exhausted && has_credits {
-                        // Credits mode: show thick credits bar
                         tray.update_credits_mode(provider.credits_percent.unwrap_or(0.0), &provider.display_name);
                     } else {
-                        // Determine overlay based on provider state
                         let overlay = if provider.error.is_some() {
                             IconOverlay::Error
                         } else {
@@ -686,688 +634,571 @@ impl eframe::App for CodexBarApp {
                 }
             }
 
-            // Check for tray menu events
             if let Some(action) = TrayManager::check_events() {
                 match action {
                     TrayMenuAction::Quit => std::process::exit(0),
                     TrayMenuAction::Open => {
-                        // Window is already open, just bring to front
                         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                     }
                 }
             }
         }
 
-        // Apply clean style
+        // Apply refined style
         let mut style = (*ctx.style()).clone();
         style.visuals.window_fill = Theme::BG_PRIMARY;
         style.visuals.panel_fill = Theme::BG_PRIMARY;
+        style.visuals.widgets.noninteractive.bg_fill = Theme::BG_SECONDARY;
+        style.visuals.widgets.inactive.bg_fill = Theme::CARD_BG;
+        style.visuals.widgets.hovered.bg_fill = Theme::CARD_BG_HOVER;
+        style.visuals.widgets.active.bg_fill = Theme::ACCENT_PRIMARY;
+        style.visuals.selection.bg_fill = Theme::selection_overlay();
+        style.visuals.selection.stroke = Stroke::new(1.0, Theme::ACCENT_PRIMARY);
         ctx.set_style(style);
 
+        // Handle keyboard shortcuts
+        ctx.input(|i| {
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::Comma) {
+                self.preferences_window.open();
+            }
+        });
+
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(Theme::BG_PRIMARY).inner_margin(16.0))
+            .frame(egui::Frame::none().fill(Theme::BG_PRIMARY).inner_margin(Spacing::SM))
             .show(ctx, |ui| {
-                // Wrap everything in a scroll area
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                // ════════════════════════════════════════════════════════════
-                // UPDATE BANNER (if available)
-                // ════════════════════════════════════════════════════════════
+                    // ════════════════════════════════════════════════════════════
+                    // UPDATE BANNER
+                    // ════════════════════════════════════════════════════════════
+                    if let Some(ref update) = update_info {
+                        egui::Frame::none()
+                            .fill(Theme::ACCENT_PRIMARY)
+                            .rounding(Rounding::same(Radius::LG))
+                            .inner_margin(Spacing::MD)
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("🎉").size(FontSize::MD));
+                                    ui.add_space(Spacing::XS);
+                                    ui.label(
+                                        RichText::new(format!("Update available: {}", update.version))
+                                            .size(FontSize::BASE)
+                                            .color(Color32::WHITE)
+                                            .strong(),
+                                    );
 
-                if let Some(ref update) = update_info {
-                    egui::Frame::none()
-                        .fill(Color32::from_rgb(45, 140, 255)) // Blue banner
-                        .rounding(Rounding::same(10.0))
-                        .inner_margin(10.0)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new("🎉")
-                                        .size(14.0),
-                                );
-                                ui.label(
-                                    RichText::new(format!("Update available: {}", update.version))
-                                        .size(12.0)
-                                        .color(Color32::WHITE)
-                                        .strong(),
-                                );
-
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    // Dismiss button
-                                    if ui.add(
-                                        egui::Button::new(RichText::new("✕").size(12.0).color(Color32::WHITE))
-                                            .fill(Color32::TRANSPARENT)
-                                            .stroke(Stroke::NONE)
-                                    ).clicked() {
-                                        if let Ok(mut s) = self.state.lock() {
-                                            s.update_dismissed = true;
-                                        }
-                                    }
-
-                                    // Download button
-                                    let download_url = update.download_url.clone();
-                                    if ui.add(
-                                        egui::Button::new(RichText::new("Download").size(11.0).color(Color32::from_rgb(45, 140, 255)))
-                                            .fill(Color32::WHITE)
-                                            .rounding(Rounding::same(4.0))
-                                    ).clicked() {
-                                        let _ = open::that(&download_url);
-                                    }
-                                });
-                            });
-                        });
-                    ui.add_space(8.0);
-                }
-
-                // ════════════════════════════════════════════════════════════
-                // PROVIDERS CARD - Refined tab bar design
-                // ════════════════════════════════════════════════════════════
-
-                egui::Frame::none()
-                    .fill(Theme::CARD_BG)
-                    .rounding(Rounding::same(16.0))
-                    .inner_margin(16.0)
-                    .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
-                    .show(ui, |ui| {
-                        // Main tab bar - horizontal scrollable area
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
-
-                            let main_count = providers.len().min(MAIN_PROVIDER_COUNT);
-                            for idx in 0..main_count {
-                                let provider = &providers[idx];
-                                let is_selected = idx == self.selected_provider;
-                                let icon = provider_icon(&provider.name);
-
-                                // Custom tab rendering
-                                let tab_width = 56.0;
-                                let tab_height = 52.0;
-                                let (rect, response) = ui.allocate_exact_size(
-                                    Vec2::new(tab_width, tab_height),
-                                    egui::Sense::click(),
-                                );
-
-                                let is_hovered = response.hovered();
-
-                                // Background
-                                let bg_color = if is_selected {
-                                    Theme::ACCENT_PRIMARY
-                                } else if is_hovered {
-                                    Theme::SURFACE_ELEVATED
-                                } else {
-                                    Color32::TRANSPARENT
-                                };
-
-                                let rounding = Rounding::same(12.0);
-                                ui.painter().rect_filled(rect, rounding, bg_color);
-
-                                // Glow effect for selected
-                                if is_selected {
-                                    let glow_rect = rect.expand(2.0);
-                                    let glow_color = Color32::from_rgba_unmultiplied(0, 212, 255, 25);
-                                    ui.painter().rect_filled(glow_rect, Rounding::same(14.0), glow_color);
-                                    ui.painter().rect_filled(rect, rounding, bg_color);
-                                }
-
-                                // Icon
-                                let icon_color = if is_selected {
-                                    Color32::WHITE
-                                } else if is_hovered {
-                                    Theme::ACCENT_PRIMARY
-                                } else {
-                                    Theme::TEXT_MUTED
-                                };
-
-                                let icon_pos = egui::pos2(rect.center().x, rect.min.y + 18.0);
-                                ui.painter().text(
-                                    icon_pos,
-                                    egui::Align2::CENTER_CENTER,
-                                    icon,
-                                    egui::FontId::proportional(16.0),
-                                    icon_color,
-                                );
-
-                                // Label
-                                let text_color = if is_selected {
-                                    Color32::WHITE
-                                } else if is_hovered {
-                                    Theme::TEXT_PRIMARY
-                                } else {
-                                    Theme::TEXT_MUTED
-                                };
-
-                                let label_pos = egui::pos2(rect.center().x, rect.max.y - 12.0);
-                                ui.painter().text(
-                                    label_pos,
-                                    egui::Align2::CENTER_CENTER,
-                                    &provider.display_name,
-                                    egui::FontId::proportional(10.0),
-                                    text_color,
-                                );
-
-                                // Weekly indicator bar (4px at bottom) - only for non-selected tabs with weekly data
-                                if !is_selected {
-                                    if let Some(weekly) = provider.weekly_percent {
-                                        let indicator_height = 4.0;
-                                        let indicator_padding = 6.0;
-                                        let indicator_y = rect.max.y - indicator_height - 2.0;
-                                        let indicator_width = rect.width() - (indicator_padding * 2.0);
-
-                                        // Track (background)
-                                        let track_rect = Rect::from_min_size(
-                                            egui::pos2(rect.min.x + indicator_padding, indicator_y),
-                                            Vec2::new(indicator_width, indicator_height),
-                                        );
-                                        let track_color = Color32::from_rgba_unmultiplied(128, 128, 128, 56);
-                                        ui.painter().rect_filled(track_rect, Rounding::same(2.0), track_color);
-
-                                        // Fill (remaining = 100 - used)
-                                        let remaining = (100.0 - weekly).clamp(0.0, 100.0);
-                                        let fill_width = indicator_width * (remaining as f32 / 100.0);
-                                        if fill_width > 0.0 {
-                                            let fill_rect = Rect::from_min_size(
-                                                egui::pos2(rect.min.x + indicator_padding, indicator_y),
-                                                Vec2::new(fill_width, indicator_height),
-                                            );
-                                            // Get provider color
-                                            if let Some(pid) = ProviderId::from_cli_name(&provider.name) {
-                                                let colors = WeeklyIndicatorColors::for_provider(pid);
-                                                let fill_color = Color32::from_rgba_unmultiplied(
-                                                    colors.fill.0, colors.fill.1, colors.fill.2, colors.fill.3
-                                                );
-                                                ui.painter().rect_filled(fill_rect, Rounding::same(2.0), fill_color);
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(
+                                            egui::Button::new(RichText::new("✕").size(FontSize::SM).color(Color32::WHITE))
+                                                .fill(Color32::TRANSPARENT)
+                                                .stroke(Stroke::NONE)
+                                        ).clicked() {
+                                            if let Ok(mut s) = self.state.lock() {
+                                                s.update_dismissed = true;
                                             }
                                         }
+
+                                        let download_url = update.download_url.clone();
+                                        if ui.add(
+                                            egui::Button::new(RichText::new("Download").size(FontSize::SM).color(Theme::ACCENT_PRIMARY))
+                                                .fill(Color32::WHITE)
+                                                .rounding(Rounding::same(Radius::SM))
+                                        ).clicked() {
+                                            let _ = open::that(&download_url);
+                                        }
+                                    });
+                                });
+                            });
+                        ui.add_space(Spacing::MD);
+                    }
+
+                    // ════════════════════════════════════════════════════════════
+                    // PROVIDER SWITCHER - Grid layout (macOS style)
+                    // ════════════════════════════════════════════════════════════
+                    const MAX_PROVIDERS_PER_ROW: usize = 4;
+
+                    egui::Frame::none()
+                        .fill(Theme::BG_SECONDARY)
+                        .rounding(Rounding::same(Radius::LG))
+                        .inner_margin(Spacing::SM)
+                        .show(ui, |ui| {
+                            let spacing = Spacing::XS;
+                            ui.spacing_mut().item_spacing = Vec2::new(spacing, spacing);
+
+                            // Calculate button width to fill available space evenly
+                            let available_width = ui.available_width();
+                            let btn_width = (available_width - spacing * (MAX_PROVIDERS_PER_ROW as f32 - 1.0)) / MAX_PROVIDERS_PER_ROW as f32;
+                            let btn_height = 58.0;
+
+                            // Split providers into rows of MAX_PROVIDERS_PER_ROW
+                            for row_providers in providers.chunks(MAX_PROVIDERS_PER_ROW) {
+                                ui.horizontal(|ui| {
+                                    for provider in row_providers.iter() {
+                                        let idx = providers.iter().position(|p| p.name == provider.name).unwrap_or(0);
+                                        let is_selected = idx == self.selected_provider;
+                                        let icon = provider_icon(&provider.name);
+                                        let brand_color = provider_color(&provider.name);
+
+                                        // Provider button
+                                        let (rect, response) = ui.allocate_exact_size(
+                                            Vec2::new(btn_width, btn_height),
+                                            egui::Sense::click(),
+                                        );
+
+                                        let is_hovered = response.hovered();
+
+                                        // Background - pill shape for selected
+                                        let bg_color = if is_selected {
+                                            Theme::ACCENT_PRIMARY
+                                        } else if is_hovered {
+                                            Theme::hover_overlay()
+                                        } else {
+                                            Color32::TRANSPARENT
+                                        };
+
+                                        ui.painter().rect_filled(rect, Rounding::same(Radius::MD), bg_color);
+
+                                        // Icon
+                                        let icon_color = if is_selected {
+                                            Color32::WHITE
+                                        } else if is_hovered {
+                                            brand_color
+                                        } else {
+                                            Theme::TEXT_SECONDARY
+                                        };
+
+                                        let icon_pos = egui::pos2(rect.center().x, rect.min.y + 18.0);
+                                        ui.painter().text(
+                                            icon_pos,
+                                            egui::Align2::CENTER_CENTER,
+                                            icon,
+                                            egui::FontId::proportional(18.0),
+                                            icon_color,
+                                        );
+
+                                        // Label - truncate long names
+                                        let label = if provider.display_name.len() > 8 {
+                                            format!("{}...", &provider.display_name[..6])
+                                        } else {
+                                            provider.display_name.clone()
+                                        };
+
+                                        let text_color = if is_selected {
+                                            Color32::WHITE
+                                        } else {
+                                            Theme::TEXT_MUTED
+                                        };
+
+                                        let label_pos = egui::pos2(rect.center().x, rect.max.y - 12.0);
+                                        ui.painter().text(
+                                            label_pos,
+                                            egui::Align2::CENTER_CENTER,
+                                            &label,
+                                            egui::FontId::proportional(FontSize::XS),
+                                            text_color,
+                                        );
+
+                                        if response.clicked() {
+                                            self.selected_provider = idx;
+                                        }
                                     }
-                                }
-
-                                if response.clicked() {
-                                    self.selected_provider = idx;
-                                }
-                            }
-
-                            if is_refreshing {
-                                ui.add_space(8.0);
-                                ui.spinner();
+                                });
                             }
                         });
 
-                        // More Providers - compact pill style
-                        if providers.len() > MAIN_PROVIDER_COUNT {
-                            ui.add_space(12.0);
+                    ui.add_space(Spacing::SM);
 
-                            // Separator line
+                    // ════════════════════════════════════════════════════════════
+                    // PROVIDER DETAIL CARD (macOS style)
+                    // ════════════════════════════════════════════════════════════
+                    if let Some(provider) = providers.get(self.selected_provider) {
+                        egui::Frame::none()
+                            .fill(Theme::CARD_BG)
+                            .rounding(Rounding::same(Radius::MD))
+                            .inner_margin(Spacing::MD)
+                            .stroke(Stroke::new(0.5, Theme::CARD_BORDER))
+                            .show(ui, |ui| {
+                                // Header with name and badge
+                                ui.horizontal(|ui| {
+                                    ui.vertical(|ui| {
+                                        // Provider name - medium size
+                                        ui.label(
+                                            RichText::new(&provider.display_name)
+                                                .size(FontSize::LG)
+                                                .color(Theme::TEXT_PRIMARY)
+                                                .strong(),
+                                        );
+                                        // Updated timestamp
+                                        ui.label(
+                                            RichText::new("Updated just now")
+                                                .size(FontSize::XS)
+                                                .color(Theme::TEXT_MUTED),
+                                        );
+                                    });
+
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                        // Plan badge (compact)
+                                        if let Some(plan) = &provider.plan {
+                                            ui.label(
+                                                RichText::new(plan)
+                                                    .size(FontSize::SM)
+                                                    .color(Theme::TEXT_SECONDARY),
+                                            );
+                                        }
+                                    });
+                                });
+
+                                ui.add_space(Spacing::LG);
+
+                                // Usage sections
+                                if provider.error.is_some() {
+                                    ui.label(
+                                        RichText::new("Unable to fetch usage data")
+                                            .size(FontSize::SM)
+                                            .color(Theme::TEXT_MUTED),
+                                    );
+                                } else {
+                                    // Session Section
+                                    if let Some(pct) = provider.session_percent {
+                                        draw_section_header(ui, "Session");
+                                        ui.add_space(Spacing::XS);
+                                        draw_usage_bar(ui, pct, provider.session_reset.as_deref(), Theme::BLUE);
+                                        ui.add_space(Spacing::MD);
+                                    }
+
+                                    // Weekly Section
+                                    if let Some(pct) = provider.weekly_percent {
+                                        draw_section_header(ui, "Weekly");
+                                        ui.add_space(Spacing::XS);
+                                        draw_usage_bar(ui, pct, provider.weekly_reset.as_deref(), Theme::BLUE);
+                                        ui.add_space(Spacing::MD);
+                                    }
+
+                                    // Model/Code Review Section with Pace Indicator
+                                    if let Some(pct) = provider.model_percent {
+                                        let name = provider.model_name.as_deref().unwrap_or("Code review");
+                                        draw_section_header(ui, name);
+                                        ui.add_space(Spacing::XS);
+
+                                        // Pace indicator (dot) before bar
+                                        ui.horizontal(|ui| {
+                                            if let Some(pace) = provider.pace_percent {
+                                                let dot_color = if pace <= -5.0 {
+                                                    Theme::GREEN
+                                                } else if pace >= 5.0 {
+                                                    Theme::ORANGE
+                                                } else {
+                                                    Theme::TEXT_MUTED
+                                                };
+
+                                                let (rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), egui::Sense::hover());
+                                                ui.painter().circle_filled(rect.center(), 3.0, dot_color);
+                                            }
+
+                                            draw_usage_bar_content(ui, pct, Theme::BLUE);
+                                        });
+
+                                        // Pace text
+                                        if let Some(pace) = provider.pace_percent {
+                                            ui.add_space(2.0);
+                                            draw_pace_indicator(ui, pace, provider.pace_lasts_to_reset);
+                                        }
+                                        ui.add_space(Spacing::MD);
+                                    }
+
+                                    // Credits Section
+                                    if let Some(credits_pct) = provider.credits_percent {
+                                        draw_section_header(ui, "Credits");
+                                        ui.add_space(Spacing::XS);
+                                        draw_credits_section(ui, credits_pct, provider.credits_remaining, None);
+                                        ui.add_space(Spacing::SM);
+
+                                        // Buy Credits button
+                                        if ui.add(
+                                            egui::Button::new(RichText::new("⊕ Buy Credits...").size(FontSize::SM).color(Theme::TEXT_PRIMARY))
+                                                .fill(Color32::TRANSPARENT)
+                                                .frame(false)
+                                        ).clicked() {
+                                            if let Some(url) = &provider.dashboard_url {
+                                                let _ = open::that(url);
+                                            }
+                                        }
+                                        ui.add_space(Spacing::MD);
+                                    }
+
+                                    // Cost Section
+                                    if let Some(ref cost_used) = provider.cost_used {
+                                        draw_section_header(ui, "Cost");
+                                        ui.add_space(Spacing::XS);
+                                        draw_cost_display(
+                                            ui,
+                                            Some(cost_used.as_str()),
+                                            None, // today tokens
+                                            provider.cost_limit.as_deref(),  // Use limit as monthly cost
+                                            None, // monthly tokens
+                                        );
+                                    }
+
+                                    // Chart toggle
+                                    if !provider.cost_history.is_empty() || provider.cost_used.is_some() {
+                                        ui.add_space(Spacing::MD);
+                                        let chart_label = if self.show_chart { "▼ Hide Chart" } else { "▶ Show Chart" };
+                                        if ui.add(
+                                            egui::Button::new(RichText::new(chart_label).size(FontSize::XS).color(Theme::TEXT_SECONDARY))
+                                                .fill(Color32::TRANSPARENT)
+                                        ).clicked() {
+                                            self.show_chart = !self.show_chart;
+                                        }
+
+                                        if self.show_chart && !provider.cost_history.is_empty() {
+                                            ui.add_space(Spacing::SM);
+                                            let points: Vec<ChartPoint> = provider.cost_history.iter()
+                                                .map(|(date, cost)| ChartPoint {
+                                                    date: date.clone(),
+                                                    value: *cost,
+                                                    tokens: None,
+                                                    model_breakdowns: None,
+                                                })
+                                                .collect();
+                                            let mut chart = CostHistoryChart::new(points, Theme::ACCENT_PRIMARY);
+                                            chart.show(ui);
+                                        }
+                                    }
+                                }
+                            });
+                    } else if providers.is_empty() {
+                        // Loading state
+                        egui::Frame::none()
+                            .fill(Theme::CARD_BG)
+                            .rounding(Rounding::same(Radius::LG))
+                            .inner_margin(Spacing::XXL)
+                            .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
+                            .show(ui, |ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.spinner();
+                                    ui.add_space(Spacing::SM);
+                                    ui.label(
+                                        RichText::new("Loading providers...")
+                                            .size(FontSize::BASE)
+                                            .color(Theme::TEXT_MUTED),
+                                    );
+                                });
+                            });
+                    }
+
+                    ui.add_space(Spacing::SM);
+
+                    // ════════════════════════════════════════════════════════════
+                    // MENU ITEMS
+                    // ════════════════════════════════════════════════════════════
+                    egui::Frame::none()
+                        .fill(Theme::CARD_BG)
+                        .rounding(Rounding::same(Radius::MD))
+                        .inner_margin(Spacing::XS)
+                        .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
+                        .show(ui, |ui| {
+                            if draw_menu_item(ui, "↻", "Refresh") {
+                                self.refresh_providers();
+                            }
+
+                            if draw_menu_item(ui, "📊", "Usage Dashboard") {
+                                if let Some(p) = providers.get(self.selected_provider) {
+                                    if let Some(url) = &p.dashboard_url {
+                                        let _ = open::that(url);
+                                    }
+                                }
+                            }
+
+                            if draw_menu_item(ui, "📈", "Status Page") {
+                                if let Some(p) = providers.get(self.selected_provider) {
+                                    if let Some(url) = get_status_page_url(&p.name) {
+                                        let _ = open::that(url);
+                                    }
+                                }
+                            }
+
+                            // Login handling
+                            if let Some(p) = providers.get(self.selected_provider) {
+                                let supports_cli_login = matches!(p.name.as_str(), "claude" | "codex" | "gemini" | "copilot");
+                                let needs_api_key = matches!(p.name.as_str(), "zai" | "z.ai" | "amp" | "synthetic" | "copilot" | "jetbrains");
+
+                                let web_login_url = match p.name.as_str() {
+                                    "cursor" => Some("https://cursor.com/settings"),
+                                    "droid" | "factory" => Some("https://app.factory.ai"),
+                                    "kiro" => Some("https://kiro.dev"),
+                                    "vertexai" | "vertex ai" => Some("https://console.cloud.google.com/vertex-ai"),
+                                    "augment" => Some("https://app.augmentcode.com"),
+                                    "minimax" => Some("https://www.minimax.chat"),
+                                    "opencode" => Some("https://opencode.ai"),
+                                    "kimi" | "kimik2" | "kimi k2" => Some("https://kimi.moonshot.cn"),
+                                    _ => None,
+                                };
+
+                                let is_local_app_login = matches!(p.name.as_str(), "antigravity");
+
+                                if supports_cli_login {
+                                    if is_logging_in && login_provider.as_ref() == Some(&p.name) {
+                                        ui.add_space(Spacing::XS);
+                                        egui::Frame::none()
+                                            .fill(Theme::BG_SECONDARY)
+                                            .rounding(Rounding::same(Radius::MD))
+                                            .inner_margin(Spacing::MD)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.spinner();
+                                                    ui.add_space(Spacing::XS);
+                                                    let phase_icon = match login_phase {
+                                                        LoginPhase::Idle => "⚪",
+                                                        LoginPhase::Requesting => "🔄",
+                                                        LoginPhase::WaitingBrowser => "🌐",
+                                                        LoginPhase::Complete => "✅",
+                                                    };
+                                                    ui.label(
+                                                        RichText::new(format!("{} {}", phase_icon, login_message.as_deref().unwrap_or("")))
+                                                            .size(FontSize::BASE)
+                                                            .color(Theme::TEXT_PRIMARY),
+                                                    );
+                                                });
+
+                                                if ui.add(
+                                                    egui::Button::new(RichText::new("Cancel").size(FontSize::SM))
+                                                        .fill(Theme::CARD_BG)
+                                                ).clicked() {
+                                                    if let Ok(mut s) = self.state.lock() {
+                                                        s.login_provider = None;
+                                                        s.login_phase = LoginPhase::Idle;
+                                                        s.login_message = None;
+                                                        s.login_auth_url = None;
+                                                    }
+                                                }
+                                            });
+                                        ui.add_space(Spacing::XS);
+                                    } else if draw_menu_item(ui, "🔑", "Login...") {
+                                        self.start_login(&p.name);
+                                    }
+                                } else if needs_api_key {
+                                    if draw_menu_item(ui, "🔑", "Configure API Key...") {
+                                        self.preferences_window.active_tab = super::preferences::PreferencesTab::ApiKeys;
+                                        self.preferences_window.open();
+                                    }
+                                } else if let Some(url) = web_login_url {
+                                    if draw_menu_item(ui, "🔑", "Login (Web)...") {
+                                        let _ = open::that(url);
+                                    }
+                                } else if is_local_app_login {
+                                    ui.add_space(Spacing::XXS);
+                                    ui.horizontal(|ui| {
+                                        ui.label(RichText::new("ℹ").size(FontSize::SM).color(Theme::ACCENT_PRIMARY));
+                                        ui.label(
+                                            RichText::new("Login is managed in the Antigravity app")
+                                                .size(FontSize::SM)
+                                                .color(Theme::TEXT_MUTED),
+                                        );
+                                    });
+                                    ui.add_space(Spacing::XXS);
+                                }
+                            }
+
+                            if draw_menu_item(ui, "⚙", "Settings...") {
+                                self.preferences_window.open();
+                            }
+
+                            if draw_menu_item(ui, "ℹ", "About CodexBar") {
+                                self.preferences_window.active_tab = super::preferences::PreferencesTab::About;
+                                self.preferences_window.open();
+                            }
+
+                            // Separator
+                            ui.add_space(Spacing::XS);
                             let sep_rect = ui.available_rect_before_wrap();
                             ui.painter().hline(
                                 sep_rect.x_range(),
                                 sep_rect.top(),
                                 Stroke::new(1.0, Theme::SEPARATOR),
                             );
-                            ui.add_space(12.0);
+                            ui.add_space(Spacing::XS);
 
-                            ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
-
-                                for idx in MAIN_PROVIDER_COUNT..providers.len() {
-                                    let provider = &providers[idx];
-                                    let is_selected = idx == self.selected_provider;
-                                    let icon = provider_icon(&provider.name);
-
-                                    // Pill-style button
-                                    let pill_height = 26.0;
-                                    let text = format!("{} {}", icon, provider.display_name);
-                                    let text_width = ui.fonts(|f| {
-                                        f.glyph_width(&egui::FontId::proportional(10.0), ' ') * text.len() as f32 * 0.6
-                                    }).max(50.0);
-
-                                    let (rect, response) = ui.allocate_exact_size(
-                                        Vec2::new(text_width + 16.0, pill_height),
-                                        egui::Sense::click(),
-                                    );
-
-                                    let is_hovered = response.hovered();
-
-                                    let bg_color = if is_selected {
-                                        Theme::ACCENT_PRIMARY
-                                    } else if is_hovered {
-                                        Theme::SURFACE_ELEVATED
-                                    } else {
-                                        Theme::TAB_CONTAINER
-                                    };
-
-                                    let text_color = if is_selected {
-                                        Color32::WHITE
-                                    } else if is_hovered {
-                                        Theme::TEXT_PRIMARY
-                                    } else {
-                                        Theme::TEXT_MUTED
-                                    };
-
-                                    // Border for unselected
-                                    if !is_selected {
-                                        ui.painter().rect_stroke(
-                                            rect,
-                                            Rounding::same(13.0),
-                                            Stroke::new(1.0, Theme::SEPARATOR),
-                                        );
-                                    }
-
-                                    ui.painter().rect_filled(rect, Rounding::same(13.0), bg_color);
-
-                                    ui.painter().text(
-                                        rect.center(),
-                                        egui::Align2::CENTER_CENTER,
-                                        &text,
-                                        egui::FontId::proportional(10.0),
-                                        text_color,
-                                    );
-
-                                    if response.clicked() {
-                                        self.selected_provider = idx;
-                                    }
-                                }
-                            });
-                        }
-                    });
-
-                ui.add_space(12.0);
-
-                // ════════════════════════════════════════════════════════════
-                // PROVIDER DETAIL
-                // ════════════════════════════════════════════════════════════
-
-                if let Some(provider) = providers.get(self.selected_provider) {
-                    egui::Frame::none()
-                        .fill(Theme::CARD_BG)
-                        .rounding(Rounding::same(14.0))
-                        .inner_margin(16.0)
-                        .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
-                        .show(ui, |ui| {
-                            // Header row
+                            // Keyboard hint
                             ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        RichText::new(&provider.display_name)
-                                            .size(18.0)
-                                            .color(Theme::TEXT_PRIMARY)
-                                            .strong(),
-                                    );
-                                    ui.label(
-                                        RichText::new("Updated just now")
-                                            .size(11.0)
-                                            .color(Theme::TEXT_MUTED),
-                                    );
-                                });
-
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                    // Status badge (show if not operational)
-                                    if provider.status_level != StatusLevel::Operational && provider.status_level != StatusLevel::Unknown {
-                                        let (badge_color, badge_text) = match provider.status_level {
-                                            StatusLevel::Degraded => (Theme::YELLOW, "⚠"),
-                                            StatusLevel::Partial => (Theme::ORANGE, "⚠"),
-                                            StatusLevel::Major => (Theme::RED, "⛔"),
-                                            _ => (Theme::TEXT_MUTED, "?"),
-                                        };
-                                        egui::Frame::none()
-                                            .fill(badge_color)
-                                            .rounding(Rounding::same(6.0))
-                                            .inner_margin(egui::Margin::symmetric(6.0, 4.0))
-                                            .show(ui, |ui| {
-                                                ui.label(
-                                                    RichText::new(badge_text)
-                                                        .size(10.0)
-                                                        .color(Color32::WHITE),
-                                                );
-                                            });
-                                        ui.add_space(4.0);
-                                    }
-
-                                    if let Some(plan) = &provider.plan {
-                                        egui::Frame::none()
-                                            .fill(Theme::TAB_ACTIVE)
-                                            .rounding(Rounding::same(6.0))
-                                            .inner_margin(egui::Margin::symmetric(8.0, 4.0))
-                                            .show(ui, |ui| {
-                                                ui.label(
-                                                    RichText::new(plan)
-                                                        .size(10.0)
-                                                        .color(Color32::WHITE)
-                                                        .strong(),
-                                                );
-                                            });
-                                    }
-                                });
-                            });
-
-                            ui.add_space(14.0);
-
-                            // Usage sections
-                            if provider.error.is_some() {
                                 ui.label(
-                                    RichText::new("Unable to fetch usage data")
-                                        .size(12.0)
-                                        .color(Theme::TEXT_MUTED),
-                                );
-                            } else {
-                                if let Some(pct) = provider.session_percent {
-                                    draw_usage_bar(ui, "Session", pct, provider.session_reset.as_deref());
-                                    ui.add_space(10.0);
-                                }
-
-                                if let Some(pct) = provider.weekly_percent {
-                                    draw_usage_bar(ui, "Weekly", pct, provider.weekly_reset.as_deref());
-                                    ui.add_space(10.0);
-                                }
-
-                                if let Some(pct) = provider.model_percent {
-                                    let name = provider.model_name.as_deref().unwrap_or("Model");
-                                    draw_usage_bar(ui, name, pct, None);
-                                    ui.add_space(10.0);
-                                }
-
-                                // Pace info
-                                if let Some(pace) = provider.pace_percent {
-                                    draw_pace_info(ui, pace, provider.pace_lasts_to_reset);
-                                }
-
-                                // Credits section (Codex)
-                                if let Some(credits_pct) = provider.credits_percent {
-                                    ui.add_space(12.0);
-                                    draw_credits_bar(ui, credits_pct, provider.credits_remaining);
-                                }
-
-                                // Cost section
-                                if let Some(ref cost_used) = provider.cost_used {
-                                    ui.add_space(12.0);
-                                    draw_cost_section(ui, cost_used, provider.cost_limit.as_deref(), provider.cost_period.as_deref());
-                                }
-
-                                // Cost history chart (toggle button)
-                                if !provider.cost_history.is_empty() || provider.cost_used.is_some() {
-                                    ui.add_space(8.0);
-                                    if ui.small_button(if self.show_chart { "▼ Hide Chart" } else { "▶ Show Chart" }).clicked() {
-                                        self.show_chart = !self.show_chart;
-                                    }
-
-                                    if self.show_chart && !provider.cost_history.is_empty() {
-                                        ui.add_space(8.0);
-                                        let points: Vec<ChartPoint> = provider.cost_history.iter()
-                                            .map(|(date, cost)| ChartPoint {
-                                                date: date.clone(),
-                                                value: *cost,
-                                                tokens: None,
-                                                model_breakdowns: None,
-                                            })
-                                            .collect();
-                                        let bar_color = Theme::TAB_ACTIVE;
-                                        let mut chart = CostHistoryChart::new(points, bar_color);
-                                        chart.show(ui);
-                                    }
-                                }
-                            }
-                        });
-                } else if providers.is_empty() {
-                    egui::Frame::none()
-                        .fill(Theme::CARD_BG)
-                        .rounding(Rounding::same(14.0))
-                        .inner_margin(24.0)
-                        .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
-                        .show(ui, |ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.spinner();
-                                ui.add_space(8.0);
-                                ui.label(
-                                    RichText::new("Loading providers...")
-                                        .size(13.0)
-                                        .color(Theme::TEXT_MUTED),
+                                    RichText::new("Tip: Press Ctrl+Shift+U to open")
+                                        .size(FontSize::XS)
+                                        .color(Theme::TEXT_DIM),
                                 );
                             });
+
+                            ui.add_space(Spacing::XS);
+
+                            if draw_menu_item(ui, "✕", "Quit") {
+                                std::process::exit(0);
+                            }
                         });
-                }
-
-                ui.add_space(12.0);
-
-                // ════════════════════════════════════════════════════════════
-                // MENU BUTTONS
-                // ════════════════════════════════════════════════════════════
-
-                egui::Frame::none()
-                    .fill(Theme::CARD_BG)
-                    .rounding(Rounding::same(14.0))
-                    .inner_margin(8.0)
-                    .stroke(Stroke::new(1.0, Theme::CARD_BORDER))
-                    .show(ui, |ui| {
-                        if menu_button(ui, "🔄", "Refresh") {
-                            self.refresh_providers();
-                        }
-
-                        if menu_button(ui, "📊", "Usage Dashboard") {
-                            if let Some(p) = providers.get(self.selected_provider) {
-                                if let Some(url) = &p.dashboard_url {
-                                    let _ = open::that(url);
-                                }
-                            }
-                        }
-
-                        if menu_button(ui, "📈", "Status Page") {
-                            // Use provider-specific status page URL
-                            if let Some(p) = providers.get(self.selected_provider) {
-                                if let Some(url) = get_status_page_url(&p.name) {
-                                    let _ = open::that(url);
-                                }
-                            }
-                        }
-
-                        // Login button for all providers
-                        if let Some(p) = providers.get(self.selected_provider) {
-                            let supports_cli_login = matches!(
-                                p.name.as_str(),
-                                "claude" | "codex" | "gemini" | "copilot"
-                            );
-
-                            // Get web login URL for providers without CLI login
-                            let web_login_url = match p.name.as_str() {
-                                "cursor" => Some("https://cursor.com/settings"),
-                                "droid" | "factory" => Some("https://app.factory.ai"),
-                                "zai" | "z.ai" => Some("https://z.ai/dashboard"),
-                                "kiro" => Some("https://kiro.dev"),
-                                "vertexai" | "vertex ai" => Some("https://console.cloud.google.com/vertex-ai"),
-                                "augment" => Some("https://app.augmentcode.com"),
-                                "minimax" => Some("https://www.minimax.chat"),
-                                "opencode" => Some("https://opencode.ai"),
-                                "kimi" | "kimik2" | "kimi k2" => Some("https://kimi.moonshot.cn"),
-                                _ => None,
-                            };
-
-                            // Check if this is a local-only provider (login managed in their app)
-                            let is_local_app_login = matches!(p.name.as_str(), "antigravity");
-
-                            if supports_cli_login {
-                                // Show login status if logging in
-                                if is_logging_in && login_provider.as_ref() == Some(&p.name) {
-                                    ui.add_space(4.0);
-                                    egui::Frame::none()
-                                        .fill(Theme::BG_SECONDARY)
-                                        .rounding(Rounding::same(8.0))
-                                        .inner_margin(12.0)
-                                        .show(ui, |ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.spinner();
-                                                ui.add_space(8.0);
-                                                let phase_icon = match login_phase {
-                                                    LoginPhase::Idle => "⚪",
-                                                    LoginPhase::Requesting => "🔄",
-                                                    LoginPhase::WaitingBrowser => "🌐",
-                                                    LoginPhase::Complete => "✅",
-                                                };
-                                                ui.label(
-                                                    RichText::new(format!("{} {}", phase_icon, login_message.as_deref().unwrap_or("")))
-                                                        .size(12.0)
-                                                        .color(Theme::TEXT_PRIMARY),
-                                                );
-                                            });
-
-                                            // Cancel button
-                                            if ui.add(egui::Button::new(
-                                                RichText::new("Cancel")
-                                                    .size(11.0)
-                                            ).fill(Theme::CARD_BG)).clicked() {
-                                                if let Ok(mut s) = self.state.lock() {
-                                                    s.login_provider = None;
-                                                    s.login_phase = LoginPhase::Idle;
-                                                    s.login_message = None;
-                                                    s.login_auth_url = None;
-                                                }
-                                            }
-                                        });
-                                    ui.add_space(4.0);
-                                } else if menu_button(ui, "🔑", "Login...") {
-                                    // Start in-app CLI login
-                                    self.start_login(&p.name);
-                                }
-                            } else if let Some(url) = web_login_url {
-                                // Web-based login for providers without CLI
-                                if menu_button(ui, "🔑", "Login (Web)...") {
-                                    let _ = open::that(url);
-                                }
-                            } else if is_local_app_login {
-                                // Show info for local-app-managed login
-                                ui.add_space(4.0);
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        RichText::new("ℹ")
-                                            .size(12.0)
-                                            .color(Theme::ACCENT_PRIMARY),
-                                    );
-                                    ui.label(
-                                        RichText::new("Login is managed in the Antigravity app")
-                                            .size(11.0)
-                                            .color(Theme::TEXT_MUTED),
-                                    );
-                                });
-                                ui.add_space(4.0);
-                            }
-                        }
-
-                        if menu_button(ui, "⚙", "Settings...") {
-                            self.preferences_window.open();
-                        }
-
-                        if menu_button(ui, "ℹ", "About CodexBar") {
-                            self.preferences_window.active_tab = super::preferences::PreferencesTab::About;
-                            self.preferences_window.open();
-                        }
-
-                        // Separator
-                        ui.add_space(4.0);
-                        let sep_rect = ui.available_rect_before_wrap();
-                        ui.painter().hline(
-                            sep_rect.x_range(),
-                            sep_rect.top(),
-                            Stroke::new(1.0, Theme::SEPARATOR),
-                        );
-                        ui.add_space(4.0);
-
-                        // Keyboard shortcut hint
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new("Tip: Press Ctrl+Shift+U to open")
-                                    .size(10.0)
-                                    .color(Theme::TEXT_MUTED),
-                            );
-                        });
-
-                        ui.add_space(4.0);
-
-                        if menu_button(ui, "✕", "Quit") {
-                            std::process::exit(0);
-                        }
-                    });
-                }); // End ScrollArea
+                });
             });
 
-        // Show preferences window if open
+        // Show preferences window
         self.preferences_window.show(ctx);
 
-        // Sync settings if preferences changed
+        // Sync settings
         if self.preferences_window.settings_changed {
             self.settings = self.preferences_window.settings.clone();
         }
     }
 }
 
-/// Draw a usage bar with label and percentage - glowing neon style
-fn draw_usage_bar(ui: &mut egui::Ui, label: &str, percent: f64, reset: Option<&str>) {
-    let color = Theme::usage_color(percent);
-    let glow_color = Theme::usage_glow_color(percent);
-
-    // Label row with percentage badge
+/// Draw section header with chevron - macOS style
+fn draw_section_header(ui: &mut egui::Ui, title: &str) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).size(13.0).color(Theme::TEXT_PRIMARY).strong());
+        ui.label(RichText::new(title).size(FontSize::MD).color(Theme::TEXT_PRIMARY).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Percentage badge
-            let badge_color = if percent >= 90.0 {
-                Theme::RED
-            } else if percent >= 75.0 {
-                Theme::ORANGE
-            } else {
-                Theme::TEXT_DIM
-            };
-            ui.label(RichText::new(format!("{}%", percent as i32)).size(11.0).color(badge_color));
+            ui.label(RichText::new("›").size(FontSize::LG).color(Theme::TEXT_MUTED));
         });
-    });
-
-    ui.add_space(6.0);
-
-    // Glowing progress bar
-    let bar_height = 6.0;
-    let glow_height = 10.0;
-    let available_width = ui.available_width();
-
-    // Allocate space for glow + bar
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(available_width, glow_height), egui::Sense::hover());
-    let bar_rect = Rect::from_min_size(
-        egui::pos2(rect.min.x, rect.min.y + 2.0),
-        Vec2::new(available_width, bar_height),
-    );
-
-    // Track with subtle inner glow
-    ui.painter().rect_filled(bar_rect, Rounding::same(3.0), Theme::PROGRESS_TRACK);
-
-    let fill_w = bar_rect.width() * (percent as f32 / 100.0);
-    if fill_w > 0.0 {
-        let fill_rect = Rect::from_min_size(bar_rect.min, Vec2::new(fill_w, bar_height));
-
-        // Glow effect behind the bar
-        let glow_rect = Rect::from_min_size(
-            egui::pos2(fill_rect.min.x, rect.min.y),
-            Vec2::new(fill_w, glow_height),
-        );
-        ui.painter().rect_filled(glow_rect, Rounding::same(5.0), glow_color);
-
-        // Main fill
-        ui.painter().rect_filled(fill_rect, Rounding::same(3.0), color);
-    }
-
-    ui.add_space(6.0);
-
-    // Stats row - cleaner layout
-    ui.horizontal(|ui| {
-        if let Some(r) = reset {
-            ui.label(RichText::new(format!("⟳ {}", r)).size(10.0).color(Theme::TEXT_MUTED));
-        }
     });
 }
 
-/// Draw pace info showing if user is ahead or behind expected usage
-fn draw_pace_info(ui: &mut egui::Ui, pace_percent: f64, lasts_to_reset: bool) {
+/// Draw a usage bar with label, percentage, and capsule progress - macOS style
+fn draw_usage_bar(ui: &mut egui::Ui, percent: f64, reset: Option<&str>, bar_color: Color32) {
+    // Label row with reset time on right
+    ui.horizontal(|ui| {
+        let pct_str = format!("{}% used", percent as i32);
+        ui.label(RichText::new(pct_str).size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if let Some(r) = reset {
+                ui.label(RichText::new(format!("Resets in {}", r)).size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+            }
+        });
+    });
+
+    ui.add_space(4.0);
+
+    draw_usage_bar_content(ui, percent, bar_color);
+}
+
+/// Draw just the progress bar part
+fn draw_usage_bar_content(ui: &mut egui::Ui, percent: f64, color: Color32) {
+    // Progress bar - macOS style
+    let bar_height = 6.0;
+    let available_width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(available_width, bar_height), egui::Sense::hover());
+
+    // Track
+    ui.painter().rect_filled(rect, Rounding::same(Radius::PILL), Theme::PROGRESS_TRACK);
+
+    // Fill
+    let fill_w = rect.width() * (percent as f32 / 100.0);
+    if fill_w > 0.0 {
+        let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, bar_height));
+        ui.painter().rect_filled(fill_rect, Rounding::same(Radius::PILL), color);
+    }
+}
+
+/// Draw pace indicator - compact
+fn draw_pace_indicator(ui: &mut egui::Ui, pace_percent: f64, lasts_to_reset: bool) {
     let (pace_label, pace_color) = if pace_percent <= -5.0 {
-        // Significantly behind (using less than expected) - good!
-        ("Behind", Theme::USAGE_GREEN)
+        ("Behind", Theme::GREEN)
     } else if pace_percent >= 5.0 {
-        // Significantly ahead (using more than expected) - warning
-        ("Ahead", Theme::USAGE_ORANGE)
+        ("Ahead", Theme::ORANGE)
     } else {
-        // On pace
         ("On pace", Theme::TEXT_MUTED)
     };
 
@@ -1377,155 +1208,130 @@ fn draw_pace_info(ui: &mut egui::Ui, pace_percent: f64, lasts_to_reset: bool) {
         format!("Pace: {}", pace_label)
     };
 
-    let lasts_text = if lasts_to_reset {
-        " · Lasts to reset"
-    } else {
-        ""
-    };
+    let lasts_text = if lasts_to_reset { " · Lasts to reset" } else { "" };
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new(pace_text).size(11.0).color(pace_color));
+        ui.label(RichText::new(pace_text).size(FontSize::XS).color(pace_color));
         if !lasts_text.is_empty() {
-            ui.label(RichText::new(lasts_text).size(11.0).color(Theme::USAGE_GREEN));
+            ui.label(RichText::new(lasts_text).size(FontSize::XS).color(Theme::GREEN));
         }
     });
 }
 
-/// Draw credits bar section (for Codex)
-fn draw_credits_bar(ui: &mut egui::Ui, percent_remaining: f64, credits_remaining: Option<f64>) {
-    // Separator line
-    let sep_rect = ui.available_rect_before_wrap();
-    ui.painter().hline(
-        sep_rect.x_range(),
-        sep_rect.top(),
-        Stroke::new(1.0, Theme::SEPARATOR),
-    );
-    ui.add_space(8.0);
-
-    // Credits header
+/// Draw credits section - macOS style compact
+fn draw_credits_section(ui: &mut egui::Ui, percent_remaining: f64, credits_remaining: Option<f64>, tokens_remaining: Option<&str>) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("🎫").size(12.0));
-        ui.label(
-            RichText::new("Codex Credits")
-                .size(12.0)
-                .color(Theme::TEXT_PRIMARY)
-                .strong(),
-        );
+        ui.label(RichText::new("Credits").size(FontSize::MD).color(Theme::TEXT_PRIMARY));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Show exact value if available
+            if let Some(remaining) = credits_remaining {
+                let tokens_str = tokens_remaining.unwrap_or("");
+                if tokens_str.is_empty() {
+                    ui.label(RichText::new(format!("{:.1} left", remaining))
+                        .size(FontSize::SM)
+                        .color(Theme::TEXT_SECONDARY));
+                } else {
+                    ui.label(RichText::new(format!("{:.1} left · {}", remaining, tokens_str))
+                        .size(FontSize::SM)
+                        .color(Theme::TEXT_SECONDARY));
+                }
+            } else {
+                ui.label(RichText::new(format!("{}%", percent_remaining as i32))
+                    .size(FontSize::SM)
+                    .color(Theme::TEXT_SECONDARY));
+            }
+        });
     });
 
-    ui.add_space(4.0);
+    ui.add_space(2.0);
 
-    // Credits bar (shows remaining, so we use a cyan/blue color)
+    // Credits bar - thin macOS style
     let bar_height = 4.0;
     let available_width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(available_width, bar_height), egui::Sense::hover());
 
-    // Track (gray)
-    ui.painter().rect_filled(rect, Rounding::same(2.0), Theme::PROGRESS_TRACK);
+    ui.painter().rect_filled(rect, Rounding::same(Radius::PILL), Theme::PROGRESS_TRACK);
 
-    // Fill (cyan for remaining credits)
     let fill_w = rect.width() * (percent_remaining as f32 / 100.0);
     if fill_w > 0.0 {
         let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, bar_height));
-        // Use cyan for credits remaining (similar to loading animation)
-        let credits_color = Color32::from_rgb(64, 196, 255);
-        ui.painter().rect_filled(fill_rect, Rounding::same(2.0), credits_color);
+        ui.painter().rect_filled(fill_rect, Rounding::same(Radius::PILL), Theme::CYAN);
     }
+}
 
-    ui.add_space(4.0);
+/// Draw cost display - macOS style compact
+fn draw_cost_display(ui: &mut egui::Ui, today_cost: Option<&str>, today_tokens: Option<&str>, monthly_cost: Option<&str>, monthly_tokens: Option<&str>) {
+    ui.vertical(|ui| {
+        // Today row
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Today").size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let cost = today_cost.unwrap_or("$0.00");
+                let tokens = today_tokens.unwrap_or("");
+                if tokens.is_empty() {
+                    ui.label(RichText::new(cost).size(FontSize::SM).color(Theme::TEXT_PRIMARY));
+                } else {
+                    ui.label(RichText::new(format!("{} · {}", cost, tokens)).size(FontSize::SM).color(Theme::TEXT_PRIMARY));
+                }
+            });
+        });
 
-    // Credits details
-    ui.horizontal(|ui| {
-        if let Some(remaining) = credits_remaining {
-            ui.label(RichText::new(format!("{:.1} left", remaining)).size(11.0).color(Theme::TEXT_MUTED));
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(RichText::new(format!("{}% remaining", percent_remaining as i32)).size(11.0).color(Theme::TEXT_MUTED));
+        ui.add_space(2.0);
+
+        // Last 30 days row
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Last 30 days").size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let cost = monthly_cost.unwrap_or("$0.00");
+                let tokens = monthly_tokens.unwrap_or("");
+                if tokens.is_empty() {
+                    ui.label(RichText::new(cost).size(FontSize::SM).color(Theme::TEXT_PRIMARY));
+                } else {
+                    ui.label(RichText::new(format!("{} · {}", cost, tokens)).size(FontSize::SM).color(Theme::TEXT_PRIMARY));
+                }
+            });
         });
     });
 }
 
-/// Draw cost/credits section
-fn draw_cost_section(ui: &mut egui::Ui, used: &str, limit: Option<&str>, period: Option<&str>) {
-    // Separator line
-    let sep_rect = ui.available_rect_before_wrap();
-    ui.painter().hline(
-        sep_rect.x_range(),
-        sep_rect.top(),
-        Stroke::new(1.0, Theme::SEPARATOR),
-    );
-    ui.add_space(8.0);
-
-    // Cost header
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("💰").size(12.0));
-        ui.label(
-            RichText::new(period.unwrap_or("Cost"))
-                .size(12.0)
-                .color(Theme::TEXT_PRIMARY)
-                .strong(),
-        );
-    });
-
-    ui.add_space(4.0);
-
-    // Cost details
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{} used", used)).size(11.0).color(Theme::TEXT_MUTED));
-        if let Some(lim) = limit {
-            ui.label(RichText::new(format!(" / {}", lim)).size(11.0).color(Theme::TEXT_MUTED));
-        }
-    });
-}
-
-/// Draw a menu button with hover glow, returns true if clicked
-fn menu_button(ui: &mut egui::Ui, icon: &str, label: &str) -> bool {
+/// Draw a menu item button - macOS style compact
+fn draw_menu_item(ui: &mut egui::Ui, icon: &str, label: &str) -> bool {
     let available_width = ui.available_width();
 
     let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(available_width, 36.0),
+        Vec2::new(available_width, 32.0),  // Slightly larger height
         egui::Sense::click(),
     );
 
     let is_hovered = response.hovered();
-    let bg_color = if is_hovered {
-        Theme::CARD_BG_HOVER
-    } else {
-        Color32::TRANSPARENT
-    };
 
-    // Background with hover effect
-    ui.painter().rect_filled(rect, Rounding::same(8.0), bg_color);
-
-    // Accent line on hover
     if is_hovered {
-        let accent_rect = Rect::from_min_size(
-            rect.min,
-            Vec2::new(3.0, rect.height()),
-        );
-        ui.painter().rect_filled(accent_rect, Rounding::same(2.0), Theme::ACCENT_PRIMARY);
+        ui.painter().rect_filled(rect, Rounding::same(Radius::SM), Theme::menu_hover());
     }
 
-    // Icon and text
     let text_color = if is_hovered {
         Theme::TEXT_PRIMARY
     } else {
-        Theme::TEXT_MUTED
+        Theme::TEXT_SECONDARY
     };
 
-    let icon_color = if is_hovered {
-        Theme::ACCENT_PRIMARY
-    } else {
-        Theme::TEXT_DIM
-    };
-    let _ = icon_color; // Suppress warning - reserved for future use
-
-    let text_pos = egui::pos2(rect.min.x + 16.0, rect.center().y);
+    // Icon
+    let icon_pos = egui::pos2(rect.min.x + Spacing::SM, rect.center().y);
     ui.painter().text(
-        text_pos,
+        icon_pos,
         egui::Align2::LEFT_CENTER,
-        format!("{}  {}", icon, label),
-        egui::FontId::proportional(13.0),
+        icon,
+        egui::FontId::proportional(FontSize::MD),
+        text_color,
+    );
+
+    // Label
+    let label_pos = egui::pos2(rect.min.x + Spacing::SM + 22.0, rect.center().y);
+    ui.painter().text(
+        label_pos,
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(FontSize::SM),
         text_color,
     );
 
@@ -1534,16 +1340,24 @@ fn menu_button(ui: &mut egui::Ui, icon: &str, label: &str) -> bool {
 
 /// Run the application
 pub fn run() -> anyhow::Result<()> {
+    // Delete any corrupted window state
+    if let Some(data_dir) = dirs::data_dir() {
+        let state_file = data_dir.join("CodexBar").join("data").join("app.ron");
+        if state_file.exists() {
+            let _ = std::fs::remove_file(&state_file);
+        }
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([420.0, 720.0])
-            .with_min_inner_size([420.0, 600.0])
-            .with_max_inner_size([420.0, 900.0])
+            .with_inner_size([480.0, 720.0])
+            .with_min_inner_size([380.0, 500.0])
             .with_resizable(true)
             .with_decorations(true)
             .with_transparent(false)
             .with_always_on_top()
             .with_title("CodexBar"),
+        persist_window: false,  // Don't persist window state
         ..Default::default()
     };
 
