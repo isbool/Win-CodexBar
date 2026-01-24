@@ -29,6 +29,7 @@ pub enum ProviderId {
     KimiK2,
     Amp,
     Synthetic,
+    JetBrains,
 }
 
 impl ProviderId {
@@ -52,6 +53,7 @@ impl ProviderId {
             ProviderId::KimiK2,
             ProviderId::Amp,
             ProviderId::Synthetic,
+            ProviderId::JetBrains,
         ]
     }
 
@@ -75,6 +77,7 @@ impl ProviderId {
             ProviderId::KimiK2 => "kimik2",
             ProviderId::Amp => "amp",
             ProviderId::Synthetic => "synthetic",
+            ProviderId::JetBrains => "jetbrains",
         }
     }
 
@@ -98,6 +101,7 @@ impl ProviderId {
             ProviderId::KimiK2 => "Kimi K2",
             ProviderId::Amp => "Amp",
             ProviderId::Synthetic => "Synthetic",
+            ProviderId::JetBrains => "JetBrains AI",
         }
     }
 
@@ -121,6 +125,7 @@ impl ProviderId {
             "kimik2" | "kimi-k2" | "k2" => Some(ProviderId::KimiK2),
             "amp" | "sourcegraph" => Some(ProviderId::Amp),
             "synthetic" => Some(ProviderId::Synthetic),
+            "jetbrains" | "jetbrains-ai" | "intellij" => Some(ProviderId::JetBrains),
             _ => None,
         }
     }
@@ -345,13 +350,14 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 17); // 15 + 2 new providers (Amp, Synthetic)
+        assert_eq!(all.len(), 18); // 17 + 1 new provider (JetBrains)
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Kimi));
         assert!(all.contains(&ProviderId::KimiK2));
         assert!(all.contains(&ProviderId::Amp));
         assert!(all.contains(&ProviderId::Synthetic));
+        assert!(all.contains(&ProviderId::JetBrains));
     }
 
     #[test]
@@ -359,14 +365,14 @@ mod tests {
         assert_eq!(ProviderId::Claude.cli_name(), "claude");
         assert_eq!(ProviderId::Codex.cli_name(), "codex");
         assert_eq!(ProviderId::Factory.cli_name(), "factory");
-        assert_eq!(ProviderId::Zai.cli_name(), "zed");
+        assert_eq!(ProviderId::Zai.cli_name(), "zai");
     }
 
     #[test]
     fn test_provider_id_display_name() {
         assert_eq!(ProviderId::Claude.display_name(), "Claude");
-        assert_eq!(ProviderId::Factory.display_name(), "Windsurf");
-        assert_eq!(ProviderId::Zai.display_name(), "Zai");
+        assert_eq!(ProviderId::Factory.display_name(), "Droid");
+        assert_eq!(ProviderId::Zai.display_name(), "z.ai");
     }
 
     #[test]
