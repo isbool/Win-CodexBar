@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::charts::{ChartPoint, CostHistoryChart};
 use super::preferences::PreferencesWindow;
+use super::provider_icons::ProviderIconCache;
 use super::theme::{provider_color, provider_icon, FontSize, Radius, Spacing, Theme};
 use crate::core::{FetchContext, Provider, ProviderId, ProviderFetchResult, RateWindow};
 use crate::cost_scanner::get_daily_cost_history;
@@ -206,6 +207,7 @@ pub struct CodexBarApp {
     preferences_window: PreferencesWindow,
     shortcut_manager: Option<ShortcutManager>,
     show_chart: bool,
+    icon_cache: ProviderIconCache,
 }
 
 impl CodexBarApp {
@@ -320,6 +322,7 @@ impl CodexBarApp {
             preferences_window: PreferencesWindow::new(),
             shortcut_manager,
             show_chart: false,
+            icon_cache: ProviderIconCache::new(),
         }
     }
 
@@ -752,7 +755,7 @@ impl eframe::App for CodexBarApp {
                                     for provider in row_providers.iter() {
                                         let idx = providers.iter().position(|p| p.name == provider.name).unwrap_or(0);
                                         let is_selected = idx == self.selected_provider;
-                                        let icon = provider_icon(&provider.name);
+                                        let fallback_icon = provider_icon(&provider.name);
                                         let brand_color = provider_color(&provider.name);
 
                                         // Provider button
@@ -774,23 +777,50 @@ impl eframe::App for CodexBarApp {
 
                                         ui.painter().rect_filled(rect, Rounding::same(Radius::MD), bg_color);
 
-                                        // Icon
-                                        let icon_color = if is_selected {
-                                            Color32::WHITE
-                                        } else if is_hovered {
-                                            brand_color
-                                        } else {
-                                            Theme::TEXT_SECONDARY
-                                        };
-
+                                        // Icon - try SVG first, fallback to text symbol
+                                        let icon_size = 20u32;
                                         let icon_pos = egui::pos2(rect.center().x, rect.min.y + 18.0);
-                                        ui.painter().text(
-                                            icon_pos,
-                                            egui::Align2::CENTER_CENTER,
-                                            icon,
-                                            egui::FontId::proportional(18.0),
-                                            icon_color,
-                                        );
+
+                                        if let Some(texture) = self.icon_cache.get_icon(ui.ctx(), &provider.name, icon_size) {
+                                            // Render SVG icon
+                                            let icon_rect = Rect::from_center_size(
+                                                icon_pos,
+                                                Vec2::splat(icon_size as f32),
+                                            );
+
+                                            // Apply tint based on selection state
+                                            let tint = if is_selected {
+                                                Color32::WHITE
+                                            } else if is_hovered {
+                                                brand_color
+                                            } else {
+                                                Color32::from_gray(180)
+                                            };
+
+                                            ui.painter().image(
+                                                texture.id(),
+                                                icon_rect,
+                                                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                                tint,
+                                            );
+                                        } else {
+                                            // Fallback to text symbol
+                                            let icon_color = if is_selected {
+                                                Color32::WHITE
+                                            } else if is_hovered {
+                                                brand_color
+                                            } else {
+                                                Theme::TEXT_SECONDARY
+                                            };
+
+                                            ui.painter().text(
+                                                icon_pos,
+                                                egui::Align2::CENTER_CENTER,
+                                                fallback_icon,
+                                                egui::FontId::proportional(18.0),
+                                                icon_color,
+                                            );
+                                        }
 
                                         // Label - truncate long names
                                         let label = if provider.display_name.len() > 8 {

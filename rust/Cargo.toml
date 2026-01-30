@@ -51,10 +51,16 @@ winit = "0.30"
 # Native GUI with egui
 eframe = { version = "0.30", default-features = false, features = ["default_fonts", "glow", "persistence"] }
 egui = "0.30"
+egui_extras = { version = "0.30", features = ["svg", "image"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 rand = "0.9.2"
 egui_plot = "0.34.0"
 global-hotkey = "0.7.0"
+
+# SVG rendering
+resvg = "0.44"
+usvg = "0.44"
+tiny-skia = "0.11"
 
 # Windows-specific
 [target.'cfg(windows)'.dependencies]
