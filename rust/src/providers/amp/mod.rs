@@ -59,8 +59,15 @@ impl AmpProvider {
     }
 
     /// Read Amp/Sourcegraph access token
-    async fn read_access_token(&self) -> Result<String, ProviderError> {
-        // Check environment variable first
+    async fn read_access_token(&self, ctx: &FetchContext) -> Result<String, ProviderError> {
+        // Check ctx.api_key first (from settings)
+        if let Some(ref api_key) = ctx.api_key {
+            if !api_key.is_empty() {
+                return Ok(api_key.clone());
+            }
+        }
+
+        // Check environment variables as fallback
         if let Ok(token) = std::env::var("SRC_ACCESS_TOKEN") {
             return Ok(token);
         }
@@ -100,8 +107,8 @@ impl AmpProvider {
     }
 
     /// Fetch usage via Sourcegraph API
-    async fn fetch_via_web(&self) -> Result<UsageSnapshot, ProviderError> {
-        let token = self.read_access_token().await?;
+    async fn fetch_via_web(&self, ctx: &FetchContext) -> Result<UsageSnapshot, ProviderError> {
+        let token = self.read_access_token(ctx).await?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -161,7 +168,10 @@ impl AmpProvider {
     }
 
     /// Probe for Amp installation
-    async fn probe_cli(&self) -> Result<UsageSnapshot, ProviderError> {
+    async fn probe_cli(&self, ctx: &FetchContext) -> Result<UsageSnapshot, ProviderError> {
+        // Check ctx.api_key first
+        let has_api_key = ctx.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false);
+
         let has_env = std::env::var("SRC_ACCESS_TOKEN").is_ok()
             || std::env::var("AMP_ACCESS_TOKEN").is_ok();
 
@@ -173,7 +183,7 @@ impl AmpProvider {
             .map(|p| p.join("config.json").exists())
             .unwrap_or(false);
 
-        if has_env || has_amp_config || has_cody_config {
+        if has_api_key || has_env || has_amp_config || has_cody_config {
             let usage = UsageSnapshot::new(RateWindow::new(0.0))
                 .with_login_method("Amp (configured)");
             Ok(usage)
@@ -206,18 +216,18 @@ impl Provider for AmpProvider {
 
         match ctx.source_mode {
             SourceMode::Auto => {
-                if let Ok(usage) = self.fetch_via_web().await {
+                if let Ok(usage) = self.fetch_via_web(ctx).await {
                     return Ok(ProviderFetchResult::new(usage, "web"));
                 }
-                let usage = self.probe_cli().await?;
+                let usage = self.probe_cli(ctx).await?;
                 Ok(ProviderFetchResult::new(usage, "cli"))
             }
             SourceMode::Web => {
-                let usage = self.fetch_via_web().await?;
+                let usage = self.fetch_via_web(ctx).await?;
                 Ok(ProviderFetchResult::new(usage, "web"))
             }
             SourceMode::Cli => {
-                let usage = self.probe_cli().await?;
+                let usage = self.probe_cli(ctx).await?;
                 Ok(ProviderFetchResult::new(usage, "cli"))
             }
             SourceMode::OAuth => {

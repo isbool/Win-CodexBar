@@ -33,9 +33,9 @@ impl CopilotApi {
     }
 
     /// Fetch usage information from Copilot API
-    pub async fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {
-        // Load token from credential store
-        let token = self.load_token()?;
+    pub async fn fetch_usage(&self, api_key: Option<&str>) -> Result<UsageSnapshot, ProviderError> {
+        // Load token from provided api_key or credential store
+        let token = self.load_token(api_key)?;
 
         // Build request with required headers
         let response = self.client
@@ -69,8 +69,16 @@ impl CopilotApi {
         self.build_snapshot(usage_response)
     }
 
-    fn load_token(&self) -> Result<String, ProviderError> {
-        // Try each credential target
+    fn load_token(&self, api_key: Option<&str>) -> Result<String, ProviderError> {
+        // Check api_key first (from settings/ctx)
+        if let Some(key) = api_key {
+            if !key.is_empty() && key.chars().all(|c| c.is_ascii_graphic()) {
+                tracing::debug!("Using Copilot token from settings");
+                return Ok(key.to_string());
+            }
+        }
+
+        // Try each credential target as fallback
         for target in CREDENTIAL_TARGETS {
             if let Some(token) = self.try_load_credential(target) {
                 // Git Credential Manager stores as "username:password" or just password

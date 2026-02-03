@@ -68,8 +68,15 @@ impl ZaiProvider {
         }
     }
 
-    /// Get API token from Windows Credential Manager
-    fn get_api_token() -> Result<String, ProviderError> {
+    /// Get API token from ctx, Windows Credential Manager, or env
+    fn get_api_token(api_key: Option<&str>) -> Result<String, ProviderError> {
+        // Check ctx.api_key first (from settings)
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                return Ok(key.to_string());
+            }
+        }
+
         // Try Windows Credential Manager
         match keyring::Entry::new(ZAI_CREDENTIAL_TARGET, "api_token") {
             Ok(entry) => match entry.get_password() {
@@ -95,8 +102,8 @@ impl ZaiProvider {
     }
 
     /// Fetch usage from z.ai API
-    async fn fetch_usage_api(&self) -> Result<UsageSnapshot, ProviderError> {
-        let api_token = Self::get_api_token()?;
+    async fn fetch_usage_api(&self, ctx: &FetchContext) -> Result<UsageSnapshot, ProviderError> {
+        let api_token = Self::get_api_token(ctx.api_key.as_deref())?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -196,7 +203,7 @@ impl Provider for ZaiProvider {
         // z.ai only supports OAuth/API token - no CLI or web cookie fallback
         match ctx.source_mode {
             SourceMode::Auto | SourceMode::OAuth => {
-                let usage = self.fetch_usage_api().await?;
+                let usage = self.fetch_usage_api(ctx).await?;
                 Ok(ProviderFetchResult::new(usage, "oauth"))
             }
             SourceMode::Web | SourceMode::Cli => {

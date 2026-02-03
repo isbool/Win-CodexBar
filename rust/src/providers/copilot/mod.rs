@@ -56,10 +56,10 @@ impl Provider for CopilotProvider {
         &self.metadata
     }
 
-    async fn fetch_usage(&self, _ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
+    async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
         tracing::debug!("Fetching GitHub Copilot usage via API");
 
-        match self.api.fetch_usage().await {
+        match self.api.fetch_usage(ctx.api_key.as_deref()).await {
             Ok(usage) => Ok(ProviderFetchResult::new(usage, "oauth")),
             Err(e) => {
                 tracing::warn!("Copilot API fetch failed: {}", e);
