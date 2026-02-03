@@ -116,6 +116,7 @@ fn load_provider_icon(ctx: &egui::Context, provider_key: &str, size: u32) -> Opt
 }
 
 /// Check if an icon exists for the given provider
+#[allow(dead_code)]
 pub fn has_icon(provider_name: &str) -> bool {
     let key = normalize_provider_name(provider_name);
     get_icon_data().contains_key(key.as_str())
