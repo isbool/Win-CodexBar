@@ -1,194 +1,196 @@
-//! Theme: Modern Refined Dark
+//! Theme: macOS-Style Dark
 //!
-//! A rich, sophisticated dark theme with depth and atmosphere.
-//! Inspired by premium apps like Linear, Raycast, and Arc.
+//! A clean dark theme matching macOS dark mode appearance.
+//! Uses colors that approximate NSColor system colors.
 
 #![allow(dead_code)]
 
 use egui::Color32;
 
-/// Modern Refined Dark Theme
+/// macOS-Style Dark Theme
 pub struct Theme;
 
 impl Theme {
     // ═══════════════════════════════════════════════════════════════════
-    // BACKGROUNDS - Rich, layered dark palette with subtle warmth
+    // BACKGROUNDS - macOS dark mode style
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Deep background - rich charcoal with subtle warmth
-    pub const BG_PRIMARY: Color32 = Color32::from_rgb(18, 18, 22);
+    /// Window background - matches macOS windowBackgroundColor (dark)
+    pub const BG_PRIMARY: Color32 = Color32::from_rgb(30, 30, 30);
 
     /// Secondary background - elevated layer
-    pub const BG_SECONDARY: Color32 = Color32::from_rgb(24, 24, 30);
+    pub const BG_SECONDARY: Color32 = Color32::from_rgb(38, 38, 38);
 
     /// Tertiary background - for nested elements
-    pub const BG_TERTIARY: Color32 = Color32::from_rgb(32, 32, 40);
+    pub const BG_TERTIARY: Color32 = Color32::from_rgb(48, 48, 48);
 
-    /// Card/panel background - glass-like elevated surface
-    pub const CARD_BG: Color32 = Color32::from_rgb(28, 28, 36);
+    /// Card/panel background - slightly elevated
+    pub const CARD_BG: Color32 = Color32::from_rgb(44, 44, 46);
 
-    /// Card background on hover - subtle lift
-    pub const CARD_BG_HOVER: Color32 = Color32::from_rgb(38, 38, 48);
+    /// Card background on hover
+    pub const CARD_BG_HOVER: Color32 = Color32::from_rgb(54, 54, 56);
 
     /// Elevated surface (modals, popovers)
-    pub const SURFACE_ELEVATED: Color32 = Color32::from_rgb(36, 36, 46);
+    pub const SURFACE_ELEVATED: Color32 = Color32::from_rgb(50, 50, 52);
 
     /// Input field background
-    pub const INPUT_BG: Color32 = Color32::from_rgb(22, 22, 28);
+    pub const INPUT_BG: Color32 = Color32::from_rgb(28, 28, 30);
 
     // ═══════════════════════════════════════════════════════════════════
-    // ACCENT COLORS - Vibrant, modern palette
+    // ACCENT COLORS - macOS blue accent
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Primary accent - Electric blue
-    pub const ACCENT_PRIMARY: Color32 = Color32::from_rgb(59, 130, 246);
+    /// Primary accent - macOS systemBlue
+    pub const ACCENT_PRIMARY: Color32 = Color32::from_rgb(10, 132, 255);
 
     /// Primary accent hover
-    pub const ACCENT_HOVER: Color32 = Color32::from_rgb(96, 165, 250);
+    pub const ACCENT_HOVER: Color32 = Color32::from_rgb(50, 160, 255);
 
     /// Primary accent muted
-    pub const ACCENT_MUTED: Color32 = Color32::from_rgb(59, 130, 246);
+    pub const ACCENT_MUTED: Color32 = Color32::from_rgb(10, 132, 255);
 
-    /// Secondary accent - Soft purple
-    pub const ACCENT_SECONDARY: Color32 = Color32::from_rgb(139, 92, 246);
+    /// Secondary accent
+    pub const ACCENT_SECONDARY: Color32 = Color32::from_rgb(94, 92, 230);
 
-    /// Tertiary accent - Subtle glow
-    pub const ACCENT_TERTIARY: Color32 = Color32::from_rgb(99, 102, 241);
+    /// Tertiary accent
+    pub const ACCENT_TERTIARY: Color32 = Color32::from_rgb(100, 100, 230);
 
     // ═══════════════════════════════════════════════════════════════════
-    // TAB COLORS - Refined tab styling
+    // TAB COLORS
     // ═══════════════════════════════════════════════════════════════════
 
     /// Tab container background
-    pub const TAB_CONTAINER: Color32 = Color32::from_rgb(22, 22, 28);
+    pub const TAB_CONTAINER: Color32 = Color32::from_rgb(28, 28, 30);
 
     /// Tab inactive state
-    pub const TAB_INACTIVE: Color32 = Color32::from_rgb(32, 32, 40);
+    pub const TAB_INACTIVE: Color32 = Color32::from_rgb(44, 44, 46);
 
     /// Tab active state
-    pub const TAB_ACTIVE: Color32 = Color32::from_rgb(59, 130, 246);
+    pub const TAB_ACTIVE: Color32 = Color32::from_rgb(10, 132, 255);
 
-    /// Tab text when inactive
-    pub const TAB_TEXT_INACTIVE: Color32 = Color32::from_rgb(120, 120, 140);
+    /// Tab text when inactive - secondaryLabelColor
+    pub const TAB_TEXT_INACTIVE: Color32 = Color32::from_rgb(142, 142, 147);
 
     /// Tab text when active
     pub const TAB_TEXT_ACTIVE: Color32 = Color32::WHITE;
 
     // ═══════════════════════════════════════════════════════════════════
-    // TEXT COLORS - Clear hierarchy with soft tones
+    // TEXT COLORS - macOS label colors
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Primary text - Soft white with warmth
-    pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(240, 240, 245);
+    /// Primary text - labelColor (white in dark mode)
+    pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(255, 255, 255);
 
-    /// Secondary text - Labels, descriptions
-    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(160, 160, 180);
+    /// Secondary text - secondaryLabelColor
+    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(142, 142, 147);
 
-    /// Muted text - Hints, placeholders
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(100, 100, 120);
+    /// Muted text - tertiaryLabelColor
+    pub const TEXT_MUTED: Color32 = Color32::from_rgb(84, 84, 88);
 
-    /// Dimmed text - Disabled states
-    pub const TEXT_DIM: Color32 = Color32::from_rgb(70, 70, 85);
+    /// Dimmed text - quaternaryLabelColor
+    pub const TEXT_DIM: Color32 = Color32::from_rgb(60, 60, 67);
 
     /// Section header text
-    pub const TEXT_SECTION: Color32 = Color32::from_rgb(120, 120, 140);
+    pub const TEXT_SECTION: Color32 = Color32::from_rgb(142, 142, 147);
 
     // ═══════════════════════════════════════════════════════════════════
-    // BORDERS & SEPARATORS - Subtle, refined
+    // BORDERS & SEPARATORS - macOS separatorColor
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Separator line
-    pub const SEPARATOR: Color32 = Color32::from_rgb(45, 45, 55);
+    /// Separator line - separatorColor
+    pub const SEPARATOR: Color32 = Color32::from_rgb(56, 56, 58);
 
-    /// Card/panel border - subtle glass effect
-    pub const CARD_BORDER: Color32 = Color32::from_rgb(50, 50, 65);
+    /// Card/panel border
+    pub const CARD_BORDER: Color32 = Color32::from_rgb(56, 56, 58);
 
     /// Focused/accent border
-    pub const CARD_BORDER_ACCENT: Color32 = Color32::from_rgb(59, 130, 246);
+    pub const CARD_BORDER_ACCENT: Color32 = Color32::from_rgb(10, 132, 255);
 
     /// Subtle border for inputs
-    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(55, 55, 70);
+    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(68, 68, 70);
 
     // ═══════════════════════════════════════════════════════════════════
-    // USAGE/STATUS COLORS - Vibrant, clear
+    // USAGE/STATUS COLORS - macOS system colors
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Green - Success (0-50% usage)
-    pub const GREEN: Color32 = Color32::from_rgb(34, 197, 94);
+    /// Green - systemGreen (0-50% usage)
+    pub const GREEN: Color32 = Color32::from_rgb(48, 209, 88);
     pub const USAGE_GREEN: Color32 = Self::GREEN;
 
-    /// Blue - Primary/Info
-    pub const BLUE: Color32 = Color32::from_rgb(59, 130, 246);
+    /// Blue - systemBlue
+    pub const BLUE: Color32 = Color32::from_rgb(10, 132, 255);
 
-    /// Yellow - Caution (50-75% usage)
-    pub const YELLOW: Color32 = Color32::from_rgb(250, 204, 21);
+    /// Yellow - systemYellow (50-75% usage)
+    pub const YELLOW: Color32 = Color32::from_rgb(255, 214, 10);
 
-    /// Orange - Warning (75-90% usage)
-    pub const ORANGE: Color32 = Color32::from_rgb(251, 146, 60);
+    /// Orange - systemOrange (75-90% usage)
+    pub const ORANGE: Color32 = Color32::from_rgb(255, 159, 10);
     pub const USAGE_ORANGE: Color32 = Self::ORANGE;
 
-    /// Red - Critical (90-100% usage)
-    pub const RED: Color32 = Color32::from_rgb(239, 68, 68);
+    /// Red - systemRed (90-100% usage)
+    pub const RED: Color32 = Color32::from_rgb(255, 69, 58);
 
-    /// Cyan - Info/credits
-    pub const CYAN: Color32 = Color32::from_rgb(34, 211, 238);
+    /// Cyan - systemCyan
+    pub const CYAN: Color32 = Color32::from_rgb(100, 210, 255);
 
-    /// Progress bar track - subtle with depth
-    pub const PROGRESS_TRACK: Color32 = Color32::from_rgb(40, 40, 52);
-
-    // ═══════════════════════════════════════════════════════════════════
-    // BADGES - Status indicators with glow
-    // ═══════════════════════════════════════════════════════════════════
-
-    /// Success badge
-    pub const BADGE_SUCCESS: Color32 = Color32::from_rgb(34, 197, 94);
-
-    /// Warning badge
-    pub const BADGE_WARNING: Color32 = Color32::from_rgb(251, 146, 60);
-
-    /// Error badge
-    pub const BADGE_ERROR: Color32 = Color32::from_rgb(239, 68, 68);
-
-    /// Info badge
-    pub const BADGE_INFO: Color32 = Color32::from_rgb(59, 130, 246);
+    /// Progress bar track - tertiaryLabelColor with opacity
+    pub fn progress_track() -> Color32 {
+        Color32::from_rgba_unmultiplied(84, 84, 88, 56)
+    }
 
     // ═══════════════════════════════════════════════════════════════════
-    // SPECIAL EFFECTS - Depth and atmosphere
+    // BADGES - Status indicators
     // ═══════════════════════════════════════════════════════════════════
 
-    /// Get shadow color - deeper for more dimension
+    /// Success badge - systemGreen
+    pub const BADGE_SUCCESS: Color32 = Color32::from_rgb(48, 209, 88);
+
+    /// Warning badge - systemOrange
+    pub const BADGE_WARNING: Color32 = Color32::from_rgb(255, 159, 10);
+
+    /// Error badge - systemRed
+    pub const BADGE_ERROR: Color32 = Color32::from_rgb(255, 69, 58);
+
+    /// Info badge - systemBlue
+    pub const BADGE_INFO: Color32 = Color32::from_rgb(10, 132, 255);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SPECIAL EFFECTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Shadow color
     pub fn shadow() -> Color32 {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 80)
+        Color32::from_rgba_unmultiplied(0, 0, 0, 60)
     }
 
-    /// Get subtle overlay for selected states
+    /// Selection overlay - selectedContentBackgroundColor with opacity
     pub fn selection_overlay() -> Color32 {
-        Color32::from_rgba_unmultiplied(59, 130, 246, 25)
+        Color32::from_rgba_unmultiplied(10, 132, 255, 30)
     }
 
-    /// Hover overlay - gentle highlight
+    /// Hover overlay
     pub fn hover_overlay() -> Color32 {
-        Color32::from_rgba_unmultiplied(255, 255, 255, 6)
+        Color32::from_rgba_unmultiplied(255, 255, 255, 8)
     }
 
     /// Glow overlay for active elements
     pub fn glow_overlay() -> Color32 {
-        Color32::from_rgba_unmultiplied(59, 130, 246, 20)
+        Color32::from_rgba_unmultiplied(10, 132, 255, 25)
     }
 
     /// Progress glow
     pub fn progress_glow() -> Color32 {
-        Color32::from_rgba_unmultiplied(59, 130, 246, 30)
+        Color32::from_rgba_unmultiplied(10, 132, 255, 35)
     }
 
     /// Gradient start (for backgrounds)
     pub fn gradient_start() -> Color32 {
-        Color32::from_rgba_unmultiplied(59, 130, 246, 8)
+        Color32::from_rgba_unmultiplied(10, 132, 255, 10)
     }
 
     /// Gradient end
     pub fn gradient_end() -> Color32 {
-        Color32::from_rgba_unmultiplied(139, 92, 246, 5)
+        Color32::from_rgba_unmultiplied(94, 92, 230, 8)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -210,7 +212,7 @@ impl Theme {
 
     /// Get a dimmed version of usage color for track
     pub fn usage_track_color(_percent: f64) -> Color32 {
-        Self::PROGRESS_TRACK
+        Self::progress_track()
     }
 
     /// Get subtle glow color for usage
@@ -264,26 +266,27 @@ pub fn provider_icon(name: &str) -> &'static str {
     }
 }
 
-/// Provider brand colors - vibrant and recognizable
+/// Provider brand colors - matching original CodexBar
 pub fn provider_color(name: &str) -> Color32 {
     match name.to_lowercase().as_str() {
-        "codex" => Color32::from_rgb(16, 185, 129),       // Emerald green
-        "claude" => Color32::from_rgb(217, 119, 87),       // Warm terracotta
-        "cursor" => Color32::from_rgb(147, 112, 219),      // Medium purple
-        "gemini" => Color32::from_rgb(66, 153, 225),       // Sky blue
-        "copilot" => Color32::from_rgb(139, 148, 158),     // Slate gray
-        "antigravity" => Color32::from_rgb(56, 189, 248),  // Bright cyan
-        "factory" | "droid" => Color32::from_rgb(52, 211, 153),
-        "zai" | "z.ai" => Color32::from_rgb(251, 146, 60),
-        "kiro" => Color32::from_rgb(251, 191, 36),
-        "vertexai" | "vertex ai" => Color32::from_rgb(96, 165, 250),
-        "augment" => Color32::from_rgb(125, 211, 252),
-        "minimax" => Color32::from_rgb(244, 114, 182),
-        "opencode" => Color32::from_rgb(203, 213, 225),
-        "kimi" | "kimik2" | "kimi k2" => Color32::from_rgb(129, 140, 248),
-        "amp" => Color32::from_rgb(248, 113, 113),
-        "synthetic" => Color32::from_rgb(167, 139, 250),
-        "jetbrains" | "jetbrains ai" => Color32::from_rgb(252, 165, 165),
+        "claude" => Color32::from_rgb(204, 124, 94),        // #CC7C5E - Warm terracotta
+        "codex" => Color32::from_rgb(73, 163, 176),         // #49A3B0 - Teal
+        "gemini" => Color32::from_rgb(171, 135, 234),       // #AB87EA - Purple
+        "cursor" => Color32::from_rgb(0, 191, 165),         // #00BFA5 - Teal green
+        "copilot" => Color32::from_rgb(168, 85, 247),       // #A855F7 - Vibrant purple
+        "jetbrains" | "jetbrains ai" => Color32::from_rgb(255, 51, 153), // #FF3399 - Hot pink
+        "antigravity" => Color32::from_rgb(96, 186, 126),   // #60BA7E - Soft green
+        "augment" => Color32::from_rgb(99, 102, 241),       // #6366F1 - Indigo
+        "amp" => Color32::from_rgb(220, 38, 38),            // #DC2626 - Red
+        "factory" | "droid" => Color32::from_rgb(255, 107, 53), // #FF6B35 - Orange
+        "kimi" => Color32::from_rgb(254, 96, 60),           // #FE603C - Coral
+        "kimik2" | "kimi k2" => Color32::from_rgb(76, 0, 255), // #4C00FF - Electric blue
+        "kiro" => Color32::from_rgb(255, 153, 0),           // #FF9900 - Amber
+        "opencode" => Color32::from_rgb(59, 130, 246),      // #3B82F6 - Blue
+        "minimax" => Color32::from_rgb(254, 96, 60),        // #FE603C - Coral (same as Kimi)
+        "vertexai" | "vertex ai" => Color32::from_rgb(66, 133, 244), // #4285F4 - Google blue
+        "zai" | "z.ai" => Color32::from_rgb(232, 90, 106),  // #E85A6A - Rose
+        "synthetic" => Color32::from_rgb(20, 20, 20),       // #141414 - Near black
         _ => Theme::ACCENT_PRIMARY,
     }
 }
@@ -297,12 +300,12 @@ pub struct Spacing;
 
 impl Spacing {
     pub const XXS: f32 = 4.0;
-    pub const XS: f32 = 8.0;
-    pub const SM: f32 = 12.0;
-    pub const MD: f32 = 16.0;
-    pub const LG: f32 = 24.0;
-    pub const XL: f32 = 32.0;
-    pub const XXL: f32 = 48.0;
+    pub const XS: f32 = 6.0;
+    pub const SM: f32 = 10.0;
+    pub const MD: f32 = 12.0;
+    pub const LG: f32 = 16.0;
+    pub const XL: f32 = 24.0;
+    pub const XXL: f32 = 32.0;
 }
 
 /// Rounding constants - softer, modern feel
@@ -322,10 +325,10 @@ pub struct FontSize;
 
 impl FontSize {
     pub const XS: f32 = 11.0;
-    pub const SM: f32 = 12.0;
+    pub const SM: f32 = 13.0;
     pub const BASE: f32 = 13.0;
     pub const MD: f32 = 14.0;
-    pub const LG: f32 = 16.0;
+    pub const LG: f32 = 17.0;
     pub const XL: f32 = 18.0;
     pub const XXL: f32 = 22.0;
 }
