@@ -227,6 +227,9 @@ pub struct FetchContext {
 
     /// Manual cookie header (for testing)
     pub manual_cookie_header: Option<String>,
+
+    /// API key for providers that require authentication
+    pub api_key: Option<String>,
 }
 
 impl Default for FetchContext {
@@ -237,6 +240,7 @@ impl Default for FetchContext {
             web_timeout: 60,
             verbose: false,
             manual_cookie_header: None,
+            api_key: None,
         }
     }
 }
@@ -411,6 +415,7 @@ mod tests {
         assert_eq!(ctx.web_timeout, 60);
         assert!(!ctx.verbose);
         assert!(ctx.manual_cookie_header.is_none());
+        assert!(ctx.api_key.is_none());
     }
 
     #[test]

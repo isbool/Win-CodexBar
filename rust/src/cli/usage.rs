@@ -183,6 +183,7 @@ pub async fn run(args: UsageArgs) -> anyhow::Result<()> {
         web_timeout: args.web_timeout,
         verbose: false,
         manual_cookie_header: None,
+        api_key: None,
     };
 
     let mut results: Vec<serde_json::Value> = Vec::new();
