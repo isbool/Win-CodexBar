@@ -237,6 +237,19 @@ impl Theme {
     }
 }
 
+use crate::status::StatusLevel;
+
+/// Get color for a provider status level
+pub fn status_color(level: StatusLevel) -> Color32 {
+    match level {
+        StatusLevel::Operational => Theme::GREEN,
+        StatusLevel::Degraded => Theme::YELLOW,
+        StatusLevel::Partial => Theme::ORANGE,
+        StatusLevel::Major => Theme::RED,
+        StatusLevel::Unknown => Theme::TEXT_MUTED,
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PROVIDER ICONS - Clean symbols with personality
 // ═══════════════════════════════════════════════════════════════════════════
