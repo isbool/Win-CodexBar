@@ -114,7 +114,7 @@ arboard = "3.2"
 winreg = "0.55"
 
 [build-dependencies]
-# No build deps needed without Tauri
+chrono = "0.4"
 
 [dev-dependencies]
 tokio-test = "0.4"
