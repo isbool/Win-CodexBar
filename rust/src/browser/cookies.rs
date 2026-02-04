@@ -552,6 +552,15 @@ pub fn get_cookie_header(domain: &str) -> Result<String, CookieError> {
     Ok(CookieExtractor::build_cookie_header(&cookies))
 }
 
+/// Get a cookie header string for a domain from a specific browser
+pub fn get_cookie_header_from_browser(domain: &str, browser: &super::detection::DetectedBrowser) -> Result<String, CookieError> {
+    let cookies = CookieExtractor::extract_for_domain(browser, domain)?;
+    if cookies.is_empty() {
+        return Err(CookieError::NotFound(domain.to_string()));
+    }
+    Ok(CookieExtractor::build_cookie_header(&cookies))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
