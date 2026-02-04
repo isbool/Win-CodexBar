@@ -6,6 +6,7 @@
 
 use crate::core::ProviderId;
 use crate::settings::Settings;
+use crate::sound::{play_alert, AlertSound};
 
 /// Notification types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,17 +91,17 @@ impl NotificationManager {
         if let Some(notif_type) = notification_type {
             let key = (provider, notif_type);
             if !self.sent_notifications.contains(&key) {
-                self.send_notification(provider, used_percent, notif_type);
+                self.send_notification(provider, used_percent, notif_type, settings);
                 self.sent_notifications.insert(key);
             }
         }
     }
 
     /// Send a notification for a status issue
-    pub fn notify_status_issue(&mut self, provider: ProviderId, description: &str) {
+    pub fn notify_status_issue(&mut self, provider: ProviderId, description: &str, settings: &Settings) {
         let key = (provider, NotificationType::StatusIssue);
         if !self.sent_notifications.contains(&key) {
-            self.send_status_notification(provider, description);
+            self.send_status_notification(provider, description, settings);
             self.sent_notifications.insert(key);
         }
     }
@@ -134,6 +135,7 @@ impl NotificationManager {
                 provider.display_name()
             );
             self.show_toast(title, &body);
+            play_alert(AlertSound::Error, settings);
             self.sent_notifications.insert((provider, NotificationType::SessionDepleted));
         }
         // Check for restored transition: was depleted, now is not
@@ -146,6 +148,7 @@ impl NotificationManager {
                     provider.display_name()
                 );
                 self.show_toast(title, &body);
+                play_alert(AlertSound::Success, settings);
                 self.sent_notifications.remove(&(provider, NotificationType::SessionDepleted));
             }
         }
@@ -154,8 +157,8 @@ impl NotificationManager {
         self.previous_session_percent.insert(provider, current_percent);
     }
 
-    /// Send a Windows toast notification
-    fn send_notification(&self, provider: ProviderId, used_percent: f64, notif_type: NotificationType) {
+    /// Send a Windows toast notification with sound
+    fn send_notification(&self, provider: ProviderId, used_percent: f64, notif_type: NotificationType, settings: &Settings) {
         let title = notif_type.title();
         let body = match notif_type {
             NotificationType::HighUsage => {
@@ -179,12 +182,24 @@ impl NotificationManager {
         };
 
         self.show_toast(title, &body);
+
+        // Play appropriate sound based on notification type
+        let alert_sound = match notif_type {
+            NotificationType::HighUsage => AlertSound::Warning,
+            NotificationType::CriticalUsage => AlertSound::Critical,
+            NotificationType::Exhausted => AlertSound::Error,
+            NotificationType::StatusIssue => AlertSound::Error,
+            NotificationType::SessionDepleted => AlertSound::Error,
+            NotificationType::SessionRestored => AlertSound::Success,
+        };
+        play_alert(alert_sound, settings);
     }
 
-    fn send_status_notification(&self, provider: ProviderId, description: &str) {
+    fn send_status_notification(&self, provider: ProviderId, description: &str, settings: &Settings) {
         let title = NotificationType::StatusIssue.title();
         let body = format!("{}: {}", provider.display_name(), description);
         self.show_toast(title, &body);
+        play_alert(AlertSound::Error, settings);
     }
 
     #[cfg(target_os = "windows")]

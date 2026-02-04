@@ -18,6 +18,7 @@ mod providers;
 mod settings;
 mod shortcuts;
 mod single_instance;
+mod sound;
 mod status;
 mod tray;
 mod updater;
@@ -93,6 +94,28 @@ fn run() -> i32 {
         Some(Commands::Autostart(args)) => {
             rt.block_on(async {
                 match cli::autostart::run(args).await {
+                    Ok(()) => exit_codes::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        exit_codes::UNEXPECTED_FAILURE
+                    }
+                }
+            })
+        }
+        Some(Commands::Account(args)) => {
+            rt.block_on(async {
+                match cli::account::run(args).await {
+                    Ok(()) => exit_codes::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        exit_codes::UNEXPECTED_FAILURE
+                    }
+                }
+            })
+        }
+        Some(Commands::Config(args)) => {
+            rt.block_on(async {
+                match cli::config::run(args).await {
                     Ok(()) => exit_codes::SUCCESS,
                     Err(e) => {
                         eprintln!("Error: {}", e);
