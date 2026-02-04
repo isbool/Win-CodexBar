@@ -2,6 +2,7 @@
 //! Checks GitHub releases for new versions
 
 use serde::Deserialize;
+use crate::settings::UpdateChannel;
 
 const GITHUB_REPO: &str = "Finesssee/Win-CodexBar";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -22,6 +23,11 @@ struct GitHubRelease {
     html_url: String,
     body: Option<String>,
     assets: Vec<GitHubAsset>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    #[allow(dead_code)]
+    prerelease: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,11 +37,35 @@ struct GitHubAsset {
 }
 
 /// Check for updates from GitHub releases
+///
+/// When `channel` is `UpdateChannel::Beta`, includes pre-release versions.
+/// When `channel` is `UpdateChannel::Stable`, only considers stable releases.
+#[allow(dead_code)]
 pub async fn check_for_updates() -> Option<UpdateInfo> {
-    let url = format!(
-        "https://api.github.com/repos/{}/releases/latest",
-        GITHUB_REPO
-    );
+    check_for_updates_with_channel(UpdateChannel::Stable).await
+}
+
+/// Check for updates from GitHub releases with a specific channel
+///
+/// When `channel` is `UpdateChannel::Beta`, includes pre-release versions.
+/// When `channel` is `UpdateChannel::Stable`, only considers stable releases.
+pub async fn check_for_updates_with_channel(channel: UpdateChannel) -> Option<UpdateInfo> {
+    let url = match channel {
+        UpdateChannel::Beta => {
+            // For beta, we need to check all releases and find the latest (including pre-releases)
+            format!(
+                "https://api.github.com/repos/{}/releases",
+                GITHUB_REPO
+            )
+        }
+        UpdateChannel::Stable => {
+            // For stable, use the /latest endpoint which excludes pre-releases
+            format!(
+                "https://api.github.com/repos/{}/releases/latest",
+                GITHUB_REPO
+            )
+        }
+    };
 
     let client = reqwest::Client::builder()
         .user_agent("CodexBar")
@@ -49,7 +79,18 @@ pub async fn check_for_updates() -> Option<UpdateInfo> {
         return None;
     }
 
-    let release: GitHubRelease = response.json().await.ok()?;
+    // Parse response based on channel
+    let release: GitHubRelease = match channel {
+        UpdateChannel::Beta => {
+            // For beta, we get an array of releases - take the first non-draft one
+            let releases: Vec<GitHubRelease> = response.json().await.ok()?;
+            releases.into_iter().find(|r| !r.draft)?
+        }
+        UpdateChannel::Stable => {
+            // For stable, we get a single release object
+            response.json().await.ok()?
+        }
+    };
 
     // Parse version from tag (remove 'v' prefix and '-windows' suffix if present)
     let remote_version = release
