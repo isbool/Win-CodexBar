@@ -8,7 +8,9 @@
 
 #![allow(dead_code)]
 
+pub mod account;
 pub mod autostart;
+pub mod config;
 pub mod cost;
 pub mod tty_runner;
 pub mod usage;
@@ -109,6 +111,12 @@ pub enum Commands {
 
     /// Manage auto-start on Windows boot
     Autostart(autostart::AutostartArgs),
+
+    /// Manage token accounts for providers
+    Account(account::AccountArgs),
+
+    /// Configuration utilities
+    Config(config::ConfigArgs),
 }
 
 impl Cli {
