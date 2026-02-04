@@ -54,6 +54,7 @@ impl JetBrainsProvider {
                 "JetBrains/RubyMine*",
                 "JetBrains/DataGrip*",
                 "JetBrains/DataSpell*",
+                "Google/AndroidStudio*",
             ];
 
             for product in products {
@@ -86,6 +87,7 @@ impl JetBrainsProvider {
                 config_dir.join("options").join("ai-assistant.xml"),
                 config_dir.join("options").join("aiAssistant.xml"),
                 config_dir.join("options").join("ai.xml"),
+                config_dir.join("options").join("AIAssistantQuotaManager2.xml"),
             ];
 
             for path in possible_paths {
