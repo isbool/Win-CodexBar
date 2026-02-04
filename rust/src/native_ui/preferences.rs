@@ -12,7 +12,12 @@ use eframe::egui::{self, Color32, RichText, Rounding, Stroke, Vec2, Rect};
 use super::provider_icons::ProviderIconCache;
 use super::theme::{provider_color, provider_icon, FontSize, Radius, Spacing, Theme};
 use crate::settings::{ApiKeys, ManualCookies, Settings, get_api_key_providers};
-use crate::core::{ProviderId, WidgetSnapshot, WidgetSnapshotStore};
+use crate::core::{PersonalInfoRedactor, ProviderId, WidgetSnapshot, WidgetSnapshotStore};
+use crate::core::{TokenAccountStore, TokenAccount, TokenAccountSupport, ProviderAccountData};
+use crate::browser::detection::{BrowserDetector, BrowserType};
+use crate::browser::cookies::get_cookie_header_from_browser;
+use crate::shortcuts::format_shortcut;
+use std::collections::HashMap;
 
 // Thread-local icon cache for viewport rendering
 thread_local! {
@@ -74,7 +79,10 @@ pub struct PreferencesWindow {
     show_api_key_input: bool,
     api_key_status_msg: Option<(String, bool)>,
     // Selected provider in Providers tab (sidebar selection)
-    selected_provider: Option<ProviderId>,
+    pub selected_provider: Option<ProviderId>,
+    // Browser cookie import state
+    selected_browser: Option<BrowserType>,
+    browser_import_status: Option<(String, bool)>, // (message, is_error)
     // Icon cache for provider SVG icons
     icon_cache: ProviderIconCache,
     // Shared state for viewport
@@ -98,8 +106,19 @@ struct PreferencesSharedState {
     show_api_key_input: bool,
     api_key_status_msg: Option<(String, bool)>,
     selected_provider: Option<ProviderId>,
+    selected_browser: Option<BrowserType>,
+    browser_import_status: Option<(String, bool)>,
     refresh_requested: bool,
     cached_snapshot: Option<WidgetSnapshot>,
+    // Token accounts data
+    token_accounts: HashMap<ProviderId, ProviderAccountData>,
+    new_account_label: String,
+    new_account_token: String,
+    show_add_account_input: bool,
+    token_account_status_msg: Option<(String, bool)>,
+    // Keyboard shortcut editing
+    shortcut_input: String,
+    shortcut_status_msg: Option<(String, bool)>,
 }
 
 impl Default for PreferencesWindow {
@@ -107,6 +126,7 @@ impl Default for PreferencesWindow {
         let settings = Settings::load();
         let cookies = ManualCookies::load();
         let api_keys = ApiKeys::load();
+        let token_accounts = TokenAccountStore::new().load().unwrap_or_default();
 
         let shared_state = Arc::new(Mutex::new(PreferencesSharedState {
             is_open: false,
@@ -123,8 +143,17 @@ impl Default for PreferencesWindow {
             show_api_key_input: false,
             api_key_status_msg: None,
             selected_provider: None,
+            selected_browser: None,
+            browser_import_status: None,
             refresh_requested: false,
             cached_snapshot: WidgetSnapshotStore::load(),
+            token_accounts: token_accounts.clone(),
+            new_account_label: String::new(),
+            new_account_token: String::new(),
+            show_add_account_input: false,
+            token_account_status_msg: None,
+            shortcut_input: settings.global_shortcut.clone(),
+            shortcut_status_msg: None,
         }));
 
         Self {
@@ -142,6 +171,8 @@ impl Default for PreferencesWindow {
             show_api_key_input: false,
             api_key_status_msg: None,
             selected_provider: None,
+            selected_browser: None,
+            browser_import_status: None,
             icon_cache: ProviderIconCache::new(),
             shared_state,
         }
@@ -167,11 +198,15 @@ impl PreferencesWindow {
         // Sync to shared state and reload snapshot for fresh data after any background refreshes
         if let Ok(mut state) = self.shared_state.lock() {
             state.is_open = true;
+            state.active_tab = self.active_tab;
             state.settings = self.settings.clone();
             state.cookies = self.cookies.clone();
             state.api_keys = self.api_keys.clone();
             state.settings_changed = false;
             state.cached_snapshot = WidgetSnapshotStore::load();
+            state.selected_provider = self.selected_provider;
+            state.shortcut_input = self.settings.global_shortcut.clone();
+            state.shortcut_status_msg = None;
         }
     }
 
@@ -296,6 +331,57 @@ impl PreferencesWindow {
             if setting_toggle(ui, "Show notifications", "Alert when usage thresholds are reached", &mut show_notifications) {
                 self.settings.show_notifications = show_notifications;
                 self.settings_changed = true;
+            }
+
+            setting_divider(ui);
+
+            // Sound effects toggle
+            let mut sound_enabled = self.settings.sound_enabled;
+            if setting_toggle(ui, "Sound effects", "Play sound when thresholds are reached", &mut sound_enabled) {
+                self.settings.sound_enabled = sound_enabled;
+                self.settings_changed = true;
+            }
+
+            // Sound volume slider (only show if sound is enabled)
+            if sound_enabled {
+                setting_divider(ui);
+
+                ui.vertical(|ui| {
+                    let mut volume = self.settings.sound_volume as i32;
+
+                    // Title row with volume badge on right
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Sound volume").size(FontSize::MD).color(Theme::TEXT_PRIMARY));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            egui::Frame::none()
+                                .fill(Theme::ACCENT_PRIMARY.gamma_multiply(0.15))
+                                .rounding(Rounding::same(10.0))
+                                .inner_margin(egui::Margin::symmetric(10.0, 3.0))
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new(format!("{}%", volume)).size(FontSize::SM).color(Theme::ACCENT_PRIMARY).strong());
+                                });
+                        });
+                    });
+
+                    ui.add_space(2.0);
+                    ui.label(RichText::new("Volume level for alert sounds").size(FontSize::SM).color(Theme::TEXT_MUTED));
+                    ui.add_space(6.0);
+
+                    ui.style_mut().visuals.widgets.inactive.bg_fill = Theme::BG_TERTIARY;
+                    ui.style_mut().visuals.widgets.hovered.bg_fill = Theme::CARD_BG_HOVER;
+                    ui.style_mut().visuals.widgets.active.bg_fill = Theme::ACCENT_PRIMARY;
+
+                    let slider = ui.add(
+                        egui::Slider::new(&mut volume, 0..=100)
+                            .show_value(false)
+                            .trailing_fill(true)
+                    );
+
+                    if slider.changed() {
+                        self.settings.sound_volume = volume as u8;
+                        self.settings_changed = true;
+                    }
+                });
             }
 
             setting_divider(ui);
@@ -698,6 +784,14 @@ impl PreferencesWindow {
         ui.add_space(Spacing::LG);
 
         // ═══════════════════════════════════════════════════════════
+        // BROWSER COOKIE IMPORT - Only for cookie-based providers
+        // ═══════════════════════════════════════════════════════════
+        if provider_id.cookie_domain().is_some() {
+            self.draw_browser_cookie_import(ui, provider_id);
+            ui.add_space(Spacing::LG);
+        }
+
+        // ═══════════════════════════════════════════════════════════
         // QUICK ACTIONS
         // ═══════════════════════════════════════════════════════════
         section_header(ui, "Quick Actions");
@@ -757,6 +851,118 @@ impl PreferencesWindow {
                         .color(Theme::TEXT_SECONDARY)
                 );
             });
+        });
+    }
+
+    fn draw_browser_cookie_import(&mut self, ui: &mut egui::Ui, provider_id: &ProviderId) {
+        section_header(ui, "Browser Cookie Import");
+
+        settings_card(ui, |ui| {
+            let domain = provider_id.cookie_domain().unwrap_or("unknown");
+
+            ui.label(
+                RichText::new(format!("Import cookies from your browser for {}", domain))
+                    .size(FontSize::SM)
+                    .color(Theme::TEXT_MUTED)
+            );
+
+            ui.add_space(Spacing::SM);
+
+            // Detect available browsers
+            let browsers = BrowserDetector::detect_all();
+
+            if browsers.is_empty() {
+                ui.label(
+                    RichText::new("No supported browsers detected")
+                        .size(FontSize::SM)
+                        .color(Theme::YELLOW)
+                );
+            } else {
+                // Browser selection dropdown
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Browser").size(FontSize::MD).color(Theme::TEXT_PRIMARY));
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let selected_text = self.selected_browser
+                            .map(|b| b.display_name())
+                            .unwrap_or("Select browser...");
+
+                        egui::ComboBox::from_id_salt("browser_select")
+                            .selected_text(selected_text)
+                            .show_ui(ui, |ui| {
+                                for browser in &browsers {
+                                    let browser_type = browser.browser_type;
+                                    if ui.selectable_label(
+                                        self.selected_browser == Some(browser_type),
+                                        browser_type.display_name(),
+                                    ).clicked() {
+                                        self.selected_browser = Some(browser_type);
+                                        self.browser_import_status = None;
+                                    }
+                                }
+                            });
+                    });
+                });
+
+                ui.add_space(Spacing::MD);
+
+                // Import button
+                let can_import = self.selected_browser.is_some();
+                if ui.add_enabled(
+                    can_import,
+                    egui::Button::new(
+                        RichText::new("Import Cookies")
+                            .size(FontSize::SM)
+                            .color(if can_import { Color32::WHITE } else { Theme::TEXT_MUTED })
+                    )
+                    .fill(if can_import { Theme::ACCENT_PRIMARY } else { Theme::BG_TERTIARY })
+                    .rounding(Rounding::same(Radius::MD))
+                    .min_size(Vec2::new(120.0, 36.0))
+                ).clicked() {
+                    // Attempt to import cookies from selected browser
+                    if let Some(browser_type) = self.selected_browser {
+                        // Find the detected browser matching the selected type
+                        let browsers = BrowserDetector::detect_all();
+                        if let Some(browser) = browsers.iter().find(|b| b.browser_type == browser_type) {
+                            match get_cookie_header_from_browser(domain, browser) {
+                                Ok(cookie_header) if !cookie_header.is_empty() => {
+                                    // Save the cookie
+                                    self.cookies.set(provider_id.cli_name(), &cookie_header);
+                                    if let Err(e) = self.cookies.save() {
+                                        self.browser_import_status = Some((format!("Failed to save: {}", e), true));
+                                    } else {
+                                        self.browser_import_status = Some((
+                                            format!("Cookies imported for {}", provider_id.display_name()),
+                                            false
+                                        ));
+                                    }
+                                }
+                                Ok(_) => {
+                                    self.browser_import_status = Some((
+                                        format!("No cookies found for {} in {}. Make sure you're logged in.", domain, browser_type.display_name()),
+                                        true
+                                    ));
+                                }
+                                Err(e) => {
+                                    self.browser_import_status = Some((format!("Import failed: {}", e), true));
+                                }
+                            }
+                        } else {
+                            self.browser_import_status = Some((
+                                format!("Browser {} not found", browser_type.display_name()),
+                                true
+                            ));
+                        }
+                    }
+                }
+
+                // Status message
+                if let Some((msg, is_error)) = &self.browser_import_status {
+                    ui.add_space(Spacing::SM);
+                    let color = if *is_error { Theme::RED } else { Theme::GREEN };
+                    ui.label(RichText::new(msg).size(FontSize::SM).color(color));
+                }
+            }
         });
     }
 
@@ -1894,7 +2100,15 @@ fn render_provider_detail_panel(ui: &mut egui::Ui, provider_id: ProviderId, shar
     } else {
         "Never updated".to_string()
     };
-    let account_display = account_email.as_deref().unwrap_or("Not logged in");
+    let hide_personal_info = if let Ok(state) = shared_state.lock() {
+        state.settings.hide_personal_info
+    } else { false };
+    let account_display = if account_email.is_some() {
+        PersonalInfoRedactor::redact_email(account_email.as_deref(), hide_personal_info)
+    } else {
+        "Not logged in".to_string()
+    };
+    let account_display = if account_display.is_empty() { "Not logged in".to_string() } else { account_display };
     let plan_display = login_method.as_deref().unwrap_or("Unknown");
 
     egui::Grid::new("provider_info_grid")
@@ -1906,7 +2120,7 @@ fn render_provider_detail_panel(ui: &mut egui::Ui, provider_id: ProviderId, shar
             info_row(ui, "Version", provider_id.cli_name());
             info_row(ui, "Updated", &updated_display);
             info_row(ui, "Status", "All Systems Operational");
-            info_row(ui, "Account", account_display);
+            info_row(ui, "Account", &account_display);
             info_row(ui, "Plan", plan_display);
         });
 
@@ -1941,27 +2155,31 @@ fn render_provider_detail_panel(ui: &mut egui::Ui, provider_id: ProviderId, shar
         rate.reset_description.clone()
     };
 
+    let show_as_used = if let Ok(state) = shared_state.lock() {
+        state.settings.show_as_used
+    } else { true };
+
     // Session usage bar (primary rate)
     if let Some(ref rate) = primary_rate {
-        let percent = rate.used_percent;
+        let (percent, label) = usage_display(rate.used_percent, show_as_used);
         let reset_str = format_reset(rate);
-        usage_bar_row(ui, "Session", percent as f32, &format!("{:.0}% used", percent), reset_str.as_deref(), brand_color);
+        usage_bar_row(ui, "Session", percent as f32, &label, reset_str.as_deref(), brand_color);
         ui.add_space(8.0);
     }
 
     // Weekly usage bar (secondary rate)
     if let Some(ref rate) = secondary_rate {
-        let percent = rate.used_percent;
+        let (percent, label) = usage_display(rate.used_percent, show_as_used);
         let reset_str = format_reset(rate);
-        usage_bar_row(ui, "Weekly", percent as f32, &format!("{:.0}% used", percent), reset_str.as_deref(), brand_color);
+        usage_bar_row(ui, "Weekly", percent as f32, &label, reset_str.as_deref(), brand_color);
         ui.add_space(8.0);
     }
 
     // Tertiary rate (e.g., code review)
     if let Some(ref rate) = tertiary_rate {
-        let percent = rate.used_percent;
+        let (percent, label) = usage_display(rate.used_percent, show_as_used);
         let reset_str = rate.reset_description.as_deref();
-        usage_bar_row(ui, "Code review", percent as f32, &format!("{:.0}% used", percent), reset_str, brand_color);
+        usage_bar_row(ui, "Code review", percent as f32, &label, reset_str, brand_color);
         ui.add_space(8.0);
     }
 
@@ -1970,9 +2188,57 @@ fn render_provider_detail_panel(ui: &mut egui::Ui, provider_id: ProviderId, shar
     if tertiary_rate.is_none() {
         if let Some(remaining) = code_review_percent {
             let used = 100.0 - remaining;
-            usage_bar_row(ui, "Code review", used as f32, &format!("{:.0}% used", used), None, brand_color);
+            let (percent, label) = usage_display(used, show_as_used);
+            usage_bar_row(ui, "Code review", percent as f32, &label, None, brand_color);
         }
     }
+
+    ui.add_space(Spacing::LG);
+
+    // ═══════════════════════════════════════════════════════════
+    // TRAY METRIC PREFERENCE
+    // ═══════════════════════════════════════════════════════════
+    ui.label(
+        RichText::new("Tray Display")
+            .size(FontSize::MD)
+            .color(Theme::TEXT_PRIMARY)
+            .strong()
+    );
+    ui.add_space(Spacing::SM);
+
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Show in tray").size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let current_metric = if let Ok(state) = shared_state.lock() {
+                state.settings.get_provider_metric(provider_id)
+            } else {
+                crate::settings::MetricPreference::Automatic
+            };
+
+            egui::Frame::none()
+                .fill(Theme::BG_TERTIARY)
+                .stroke(Stroke::new(1.0, Theme::BORDER_SUBTLE))
+                .rounding(Rounding::same(Radius::SM))
+                .inner_margin(egui::Margin::symmetric(Spacing::XS, 2.0))
+                .show(ui, |ui| {
+                    let metrics = crate::settings::MetricPreference::all();
+
+                    let mut selected = current_metric;
+                    egui::ComboBox::from_id_salt(format!("metric_pref_{}", provider_id.cli_name()))
+                        .selected_text(selected.display_name())
+                        .show_ui(ui, |ui| {
+                            for metric in metrics {
+                                if ui.selectable_value(&mut selected, *metric, metric.display_name()).changed() {
+                                    if let Ok(mut state) = shared_state.lock() {
+                                        state.settings.set_provider_metric(provider_id, selected);
+                                        state.settings_changed = true;
+                                    }
+                                }
+                            }
+                        });
+                });
+        });
+    });
 
     ui.add_space(Spacing::LG);
 
@@ -2105,6 +2371,14 @@ fn render_provider_detail_panel(ui: &mut egui::Ui, provider_id: ProviderId, shar
             .size(FontSize::XS)
             .color(Theme::TEXT_MUTED)
     );
+
+    // ═══════════════════════════════════════════════════════════
+    // ACCOUNTS SECTION - Token account switching (only for supported providers)
+    // ═══════════════════════════════════════════════════════════
+    if TokenAccountSupport::is_supported(provider_id) {
+        ui.add_space(Spacing::XL);
+        render_accounts_section(ui, provider_id, shared_state);
+    }
 }
 
 /// Helper: Info grid row
@@ -2165,6 +2439,257 @@ fn usage_bar_row(ui: &mut egui::Ui, label: &str, percent: f32, info: &str, reset
     });
 }
 
+fn usage_display(used_percent: f64, show_as_used: bool) -> (f64, String) {
+    let used_percent = used_percent.clamp(0.0, 100.0);
+    let display_percent = if show_as_used {
+        used_percent
+    } else {
+        100.0 - used_percent
+    };
+
+    let label = if show_as_used {
+        format!("{:.0}% used", display_percent)
+    } else {
+        format!("{:.0}% remaining", display_percent)
+    };
+
+    (display_percent, label)
+}
+
+/// Render Accounts section for token account switching
+fn render_accounts_section(ui: &mut egui::Ui, provider_id: ProviderId, shared_state: &Arc<Mutex<PreferencesSharedState>>) {
+    let support = match TokenAccountSupport::for_provider(provider_id) {
+        Some(s) => s,
+        None => return,
+    };
+
+    ui.label(
+        RichText::new(support.title)
+            .size(FontSize::MD)
+            .color(Theme::TEXT_PRIMARY)
+            .strong()
+    );
+    ui.add_space(4.0);
+    ui.label(
+        RichText::new(support.subtitle)
+            .size(FontSize::XS)
+            .color(Theme::TEXT_MUTED)
+    );
+    ui.add_space(Spacing::SM);
+
+    // Get current accounts for this provider
+    let (accounts_data, show_add, status_msg) = if let Ok(state) = shared_state.lock() {
+        let data = state.token_accounts.get(&provider_id).cloned().unwrap_or_default();
+        (data, state.show_add_account_input, state.token_account_status_msg.clone())
+    } else {
+        (ProviderAccountData::default(), false, None)
+    };
+
+    // Status message
+    if let Some((msg, is_error)) = &status_msg {
+        let color = if *is_error { Theme::RED } else { Theme::GREEN };
+        ui.label(RichText::new(msg).size(FontSize::SM).color(color));
+        ui.add_space(Spacing::SM);
+    }
+
+    // List existing accounts with radio buttons
+    if !accounts_data.accounts.is_empty() {
+        let active_idx = accounts_data.clamped_active_index();
+
+        for (idx, account) in accounts_data.accounts.iter().enumerate() {
+            let is_active = idx == active_idx;
+
+            ui.horizontal(|ui| {
+                // Radio button
+                if ui.radio(is_active, "").clicked() && !is_active {
+                    // Set as active
+                    if let Ok(mut state) = shared_state.lock() {
+                        if let Some(data) = state.token_accounts.get_mut(&provider_id) {
+                            data.set_active(idx);
+                        }
+                        // Save to disk
+                        let store = TokenAccountStore::new();
+                        if let Err(e) = store.save(&state.token_accounts) {
+                            state.token_account_status_msg = Some((format!("Failed to save: {}", e), true));
+                        } else {
+                            state.token_account_status_msg = Some(("Account switched".to_string(), false));
+                        }
+                    }
+                }
+
+                ui.add_space(4.0);
+
+                // Account label
+                ui.label(
+                    RichText::new(account.display_name())
+                        .size(FontSize::SM)
+                        .color(if is_active { Theme::TEXT_PRIMARY } else { Theme::TEXT_SECONDARY })
+                );
+
+                // Truncated token preview
+                let token_preview = if account.token.len() > 16 {
+                    format!("{}...", &account.token[..12])
+                } else {
+                    account.token.clone()
+                };
+                ui.label(
+                    RichText::new(token_preview)
+                        .size(FontSize::XS)
+                        .color(Theme::TEXT_MUTED)
+                        .monospace()
+                );
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Remove button
+                    let account_id = account.id;
+                    if small_button(ui, "Remove", Theme::RED) {
+                        if let Ok(mut state) = shared_state.lock() {
+                            if let Some(data) = state.token_accounts.get_mut(&provider_id) {
+                                data.remove_account(account_id);
+                            }
+                            // Save to disk
+                            let store = TokenAccountStore::new();
+                            if let Err(e) = store.save(&state.token_accounts) {
+                                state.token_account_status_msg = Some((format!("Failed to save: {}", e), true));
+                            } else {
+                                state.token_account_status_msg = Some(("Account removed".to_string(), false));
+                            }
+                        }
+                    }
+                });
+            });
+
+            ui.add_space(4.0);
+        }
+
+        ui.add_space(Spacing::SM);
+    }
+
+    // Add Account button or input form
+    if show_add {
+        // Input form for adding new account
+        egui::Frame::none()
+            .fill(Theme::BG_TERTIARY)
+            .stroke(Stroke::new(1.0, Theme::ACCENT_PRIMARY.gamma_multiply(0.4)))
+            .rounding(Rounding::same(Radius::MD))
+            .inner_margin(Spacing::MD)
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new("Add Account")
+                        .size(FontSize::MD)
+                        .color(Theme::TEXT_PRIMARY)
+                        .strong()
+                );
+
+                ui.add_space(Spacing::SM);
+
+                // Label input
+                ui.label(RichText::new("Label").size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+                let mut label = if let Ok(state) = shared_state.lock() {
+                    state.new_account_label.clone()
+                } else { String::new() };
+                let label_edit = egui::TextEdit::singleline(&mut label)
+                    .desired_width(ui.available_width())
+                    .hint_text("e.g., Work Account, Personal...");
+                if ui.add(label_edit).changed() {
+                    if let Ok(mut state) = shared_state.lock() {
+                        state.new_account_label = label;
+                    }
+                }
+
+                ui.add_space(Spacing::SM);
+
+                // Token input
+                ui.label(RichText::new("Token").size(FontSize::SM).color(Theme::TEXT_SECONDARY));
+                let mut token = if let Ok(state) = shared_state.lock() {
+                    state.new_account_token.clone()
+                } else { String::new() };
+                let token_edit = egui::TextEdit::singleline(&mut token)
+                    .password(true)
+                    .desired_width(ui.available_width())
+                    .hint_text(support.placeholder);
+                if ui.add(token_edit).changed() {
+                    if let Ok(mut state) = shared_state.lock() {
+                        state.new_account_token = token;
+                    }
+                }
+
+                ui.add_space(Spacing::MD);
+
+                ui.horizontal(|ui| {
+                    let (can_save, label_val, token_val) = if let Ok(state) = shared_state.lock() {
+                        let can = !state.new_account_label.trim().is_empty()
+                            && !state.new_account_token.trim().is_empty();
+                        (can, state.new_account_label.clone(), state.new_account_token.clone())
+                    } else {
+                        (false, String::new(), String::new())
+                    };
+
+                    if ui.add_enabled(
+                        can_save,
+                        egui::Button::new(
+                            RichText::new("Save")
+                                .size(FontSize::SM)
+                                .color(Color32::WHITE)
+                        )
+                        .fill(if can_save { Theme::GREEN } else { Theme::BG_TERTIARY })
+                        .rounding(Rounding::same(Radius::SM))
+                        .min_size(Vec2::new(80.0, 32.0))
+                    ).clicked() {
+                        if let Ok(mut state) = shared_state.lock() {
+                            // Create new account
+                            let account = TokenAccount::new(label_val.trim(), token_val.trim());
+
+                            // Add to provider data
+                            let data = state.token_accounts.entry(provider_id).or_default();
+                            data.add_account(account);
+
+                            // Save to disk
+                            let store = TokenAccountStore::new();
+                            if let Err(e) = store.save(&state.token_accounts) {
+                                state.token_account_status_msg = Some((format!("Failed to save: {}", e), true));
+                            } else {
+                                state.token_account_status_msg = Some(("Account added".to_string(), false));
+                                state.new_account_label.clear();
+                                state.new_account_token.clear();
+                                state.show_add_account_input = false;
+                            }
+                        }
+                    }
+
+                    ui.add_space(Spacing::XS);
+
+                    if ui.add(
+                        egui::Button::new(
+                            RichText::new("Cancel")
+                                .size(FontSize::SM)
+                                .color(Theme::TEXT_MUTED)
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(Stroke::new(1.0, Theme::BORDER_SUBTLE))
+                        .rounding(Rounding::same(Radius::SM))
+                    ).clicked() {
+                        if let Ok(mut state) = shared_state.lock() {
+                            state.show_add_account_input = false;
+                            state.new_account_label.clear();
+                            state.new_account_token.clear();
+                        }
+                    }
+                });
+            });
+    } else {
+        // Add Account button
+        if primary_button(ui, "+ Add Account") {
+            if let Ok(mut state) = shared_state.lock() {
+                state.show_add_account_input = true;
+                state.new_account_label.clear();
+                state.new_account_token.clear();
+                state.token_account_status_msg = None;
+            }
+        }
+    }
+}
+
 /// Render General tab for viewport
 fn render_general_tab(ui: &mut egui::Ui, shared_state: &Arc<Mutex<PreferencesSharedState>>) {
     section_header(ui, "Startup");
@@ -2212,6 +2737,64 @@ fn render_general_tab(ui: &mut egui::Ui, shared_state: &Arc<Mutex<PreferencesSha
                 state.settings.show_notifications = show_notifications;
                 state.settings_changed = true;
             }
+        }
+
+        setting_divider(ui);
+
+        // Sound effects toggle
+        let mut sound_enabled = if let Ok(state) = shared_state.lock() {
+            state.settings.sound_enabled
+        } else { true };
+
+        if setting_toggle(ui, "Sound effects", "Play sound when thresholds are reached", &mut sound_enabled) {
+            if let Ok(mut state) = shared_state.lock() {
+                state.settings.sound_enabled = sound_enabled;
+                state.settings_changed = true;
+            }
+        }
+
+        // Sound volume slider (only show if sound is enabled)
+        if sound_enabled {
+            setting_divider(ui);
+
+            ui.vertical(|ui| {
+                let mut volume = if let Ok(state) = shared_state.lock() {
+                    state.settings.sound_volume as i32
+                } else { 100 };
+
+                // Title row with volume badge on right
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Sound volume").size(FontSize::MD).color(Theme::TEXT_PRIMARY));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::Frame::none()
+                            .fill(Theme::ACCENT_PRIMARY.gamma_multiply(0.15))
+                            .rounding(Rounding::same(10.0))
+                            .inner_margin(egui::Margin::symmetric(10.0, 3.0))
+                            .show(ui, |ui| {
+                                ui.label(RichText::new(format!("{}%", volume)).size(FontSize::SM).color(Theme::ACCENT_PRIMARY).strong());
+                            });
+                    });
+                });
+
+                ui.add_space(2.0);
+                ui.label(RichText::new("Volume level for alert sounds").size(FontSize::SM).color(Theme::TEXT_MUTED));
+                ui.add_space(6.0);
+
+                ui.style_mut().visuals.widgets.inactive.bg_fill = Theme::BG_TERTIARY;
+
+                let slider = ui.add(
+                    egui::Slider::new(&mut volume, 0..=100)
+                        .show_value(false)
+                        .trailing_fill(true)
+                );
+
+                if slider.changed() {
+                    if let Ok(mut state) = shared_state.lock() {
+                        state.settings.sound_volume = volume as u8;
+                        state.settings_changed = true;
+                    }
+                }
+            });
         }
 
         setting_divider(ui);
@@ -2299,6 +2882,151 @@ fn render_general_tab(ui: &mut egui::Ui, shared_state: &Arc<Mutex<PreferencesSha
                 }
             }
         });
+    });
+
+    ui.add_space(Spacing::LG);
+
+    section_header(ui, "Privacy");
+
+    settings_card(ui, |ui| {
+        let mut hide_personal_info = if let Ok(state) = shared_state.lock() {
+            state.settings.hide_personal_info
+        } else { false };
+
+        if setting_toggle(ui, "Hide personal info", "Mask emails and account names (useful for streaming)", &mut hide_personal_info) {
+            if let Ok(mut state) = shared_state.lock() {
+                state.settings.hide_personal_info = hide_personal_info;
+                state.settings_changed = true;
+            }
+        }
+    });
+
+    ui.add_space(Spacing::LG);
+
+    section_header(ui, "Updates");
+
+    settings_card(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(RichText::new("Update channel").size(FontSize::MD).color(Theme::TEXT_PRIMARY));
+                ui.label(RichText::new("Choose between stable releases or beta previews").size(FontSize::SM).color(Theme::TEXT_MUTED));
+            });
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let current_channel = if let Ok(state) = shared_state.lock() {
+                    state.settings.update_channel
+                } else {
+                    crate::settings::UpdateChannel::Stable
+                };
+
+                egui::Frame::none()
+                    .fill(Theme::BG_TERTIARY)
+                    .stroke(Stroke::new(1.0, Theme::BORDER_SUBTLE))
+                    .rounding(Rounding::same(Radius::SM))
+                    .inner_margin(egui::Margin::symmetric(Spacing::XS, 2.0))
+                    .show(ui, |ui| {
+                        let channels = [
+                            (crate::settings::UpdateChannel::Stable, "Stable"),
+                            (crate::settings::UpdateChannel::Beta, "Beta"),
+                        ];
+
+                        let mut selected = current_channel;
+                        egui::ComboBox::from_id_salt("update_channel")
+                            .selected_text(
+                                channels
+                                    .iter()
+                                    .find(|(ch, _)| *ch == selected)
+                                    .map(|(_, label)| *label)
+                                    .unwrap_or("Stable"),
+                            )
+                            .show_ui(ui, |ui| {
+                                for (channel, label) in channels {
+                                    if ui.selectable_value(&mut selected, channel, label).changed() {
+                                        if let Ok(mut state) = shared_state.lock() {
+                                            state.settings.update_channel = selected;
+                                            state.settings_changed = true;
+                                        }
+                                    }
+                                }
+                            });
+                    });
+            });
+        });
+    });
+
+    ui.add_space(Spacing::LG);
+
+    section_header(ui, "Keyboard Shortcuts");
+
+    settings_card(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(RichText::new("Global shortcut").size(FontSize::MD).color(Theme::TEXT_PRIMARY));
+                ui.label(RichText::new("Press this key combination to open CodexBar from anywhere").size(FontSize::SM).color(Theme::TEXT_MUTED));
+            });
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (mut shortcut_input, status_msg) = if let Ok(state) = shared_state.lock() {
+                    (state.shortcut_input.clone(), state.shortcut_status_msg.clone())
+                } else {
+                    ("Ctrl+Shift+U".to_string(), None)
+                };
+
+                // Show status message if any
+                if let Some((msg, is_error)) = &status_msg {
+                    let color = if *is_error { Theme::RED } else { Theme::GREEN };
+                    ui.label(RichText::new(msg).size(FontSize::XS).color(color));
+                    ui.add_space(8.0);
+                }
+
+                egui::Frame::none()
+                    .fill(Theme::BG_TERTIARY)
+                    .stroke(Stroke::new(1.0, Theme::BORDER_SUBTLE))
+                    .rounding(Rounding::same(Radius::SM))
+                    .inner_margin(egui::Margin::symmetric(Spacing::SM, 4.0))
+                    .show(ui, |ui| {
+                        let text_edit = egui::TextEdit::singleline(&mut shortcut_input)
+                            .desired_width(120.0)
+                            .hint_text("e.g., Ctrl+Shift+U");
+                        let response = ui.add(text_edit);
+
+                        if response.changed() {
+                            if let Ok(mut state) = shared_state.lock() {
+                                state.shortcut_input = shortcut_input.clone();
+                            }
+                        }
+
+                        if response.lost_focus() {
+                            // Validate and save the shortcut
+                            let shortcut_str = shortcut_input.trim().to_string();
+                            if !shortcut_str.is_empty() {
+                                // Try to parse the shortcut to validate it
+                                if let Some((modifiers, key)) = crate::shortcuts::parse_shortcut(&shortcut_str) {
+                                    // Format it back to canonical form
+                                    let formatted = format_shortcut(modifiers, key);
+                                    if let Ok(mut state) = shared_state.lock() {
+                                        state.settings.global_shortcut = formatted.clone();
+                                        state.shortcut_input = formatted;
+                                        state.settings_changed = true;
+                                        state.shortcut_status_msg = Some(("Saved (restart to apply)".to_string(), false));
+                                    }
+                                } else {
+                                    if let Ok(mut state) = shared_state.lock() {
+                                        state.shortcut_status_msg = Some(("Invalid shortcut format".to_string(), true));
+                                    }
+                                }
+                            }
+                        }
+                    });
+            });
+        });
+
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new("Format: Ctrl+Shift+Key, Alt+Ctrl+Key, etc. Restart required to apply changes.")
+                .size(FontSize::XS)
+                .color(Theme::TEXT_MUTED)
+        );
     });
 }
 
@@ -2876,6 +3604,16 @@ fn render_about_tab(ui: &mut egui::Ui) {
     ui.vertical_centered(|ui| {
         ui.add_space(Spacing::XL);
 
+        // App icon
+        ui.label(
+            RichText::new("◆")
+                .size(48.0)
+                .color(Theme::ACCENT_PRIMARY)
+        );
+
+        ui.add_space(Spacing::MD);
+
+        // App name
         ui.label(
             RichText::new("CodexBar")
                 .size(FontSize::XXL)
@@ -2885,14 +3623,16 @@ fn render_about_tab(ui: &mut egui::Ui) {
 
         ui.add_space(Spacing::SM);
 
+        // Version
         ui.label(
             RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
                 .size(FontSize::MD)
                 .color(Theme::TEXT_SECONDARY)
         );
 
-        ui.add_space(Spacing::LG);
+        ui.add_space(Spacing::SM);
 
+        // Tagline
         ui.label(
             RichText::new("Monitor your AI provider usage limits")
                 .size(FontSize::SM)
@@ -2900,19 +3640,80 @@ fn render_about_tab(ui: &mut egui::Ui) {
         );
 
         ui.add_space(Spacing::XL);
+    });
 
-        if ui.add(
-            egui::Button::new(
-                RichText::new("View on GitHub")
+    // Credits section
+    section_header(ui, "Credits");
+    settings_card(ui, |ui| {
+        ui.vertical(|ui| {
+            ui.label(
+                RichText::new("Created by CodexBar Contributors")
                     .size(FontSize::SM)
-                    .color(Theme::ACCENT_PRIMARY)
-            )
-            .fill(Color32::TRANSPARENT)
-            .stroke(Stroke::new(1.0, Theme::ACCENT_PRIMARY))
-            .rounding(Rounding::same(Radius::SM))
-        ).clicked() {
-            let _ = open::that("https://github.com/Finesssee/Win-CodexBar");
-        }
+                    .color(Theme::TEXT_PRIMARY)
+            );
+            ui.add_space(Spacing::XS);
+            ui.label(
+                RichText::new("MIT License")
+                    .size(FontSize::SM)
+                    .color(Theme::TEXT_MUTED)
+            );
+        });
+    });
+
+    ui.add_space(Spacing::MD);
+
+    // Links section
+    section_header(ui, "Links");
+    settings_card(ui, |ui| {
+        ui.vertical(|ui| {
+            if text_button(ui, "→ View on GitHub", Theme::ACCENT_PRIMARY) {
+                let _ = open::that("https://github.com/Finesssee/Win-CodexBar");
+            }
+            ui.add_space(Spacing::XS);
+            if text_button(ui, "→ Report an Issue", Theme::ACCENT_PRIMARY) {
+                let _ = open::that("https://github.com/Finesssee/Win-CodexBar/issues");
+            }
+        });
+    });
+
+    ui.add_space(Spacing::MD);
+
+    // Build info section
+    section_header(ui, "Build Info");
+    settings_card(ui, |ui| {
+        ui.vertical(|ui| {
+            let git_commit = option_env!("GIT_COMMIT").unwrap_or("dev");
+            let build_date = option_env!("BUILD_DATE").unwrap_or("unknown");
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("Commit:")
+                        .size(FontSize::SM)
+                        .color(Theme::TEXT_MUTED)
+                );
+                ui.label(
+                    RichText::new(git_commit)
+                        .size(FontSize::SM)
+                        .color(Theme::TEXT_SECONDARY)
+                        .monospace()
+                );
+            });
+
+            ui.add_space(Spacing::XS);
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("Built:")
+                        .size(FontSize::SM)
+                        .color(Theme::TEXT_MUTED)
+                );
+                ui.label(
+                    RichText::new(build_date)
+                        .size(FontSize::SM)
+                        .color(Theme::TEXT_SECONDARY)
+                );
+            });
+        });
     });
 }
 
