@@ -136,7 +136,7 @@ impl TokenAccountSupport {
                     if let Some(normalized) = Self::normalized_claude_oauth_token(token) {
                         if Self::is_claude_oauth_token(&normalized) {
                             let mut map = HashMap::new();
-                            map.insert("CLAUDE_OAUTH_TOKEN".to_string(), normalized);
+                            map.insert("CODEXBAR_CLAUDE_OAUTH_TOKEN".to_string(), normalized);
                             return Some(map);
                         }
                     }
