@@ -142,7 +142,7 @@ impl ProviderId {
             "gemini" | "google" => Some(ProviderId::Gemini),
             "antigravity" => Some(ProviderId::Antigravity),
             "copilot" | "github" => Some(ProviderId::Copilot),
-            "zai" | "z.ai" => Some(ProviderId::Zai),
+            "zai" | "z.ai" | "zed" => Some(ProviderId::Zai),
             "minimax" => Some(ProviderId::MiniMax),
             "kiro" | "aws" => Some(ProviderId::Kiro),
             "vertexai" | "vertex" => Some(ProviderId::VertexAI),
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn test_provider_id_display_name() {
         assert_eq!(ProviderId::Claude.display_name(), "Claude");
-        assert_eq!(ProviderId::Factory.display_name(), "Droid");
+        assert_eq!(ProviderId::Factory.display_name(), "Factory");
         assert_eq!(ProviderId::Zai.display_name(), "z.ai");
     }
 
