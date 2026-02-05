@@ -113,7 +113,8 @@ impl TrayManager {
         menu.append(&PredefinedMenuItem::separator())?;
 
         // Providers submenu with check items
-        let providers_submenu = Submenu::with_id("providers", "Providers", true);
+        // Build submenu items first, then add to parent menu to avoid Windows duplication bug
+        let providers_submenu = Submenu::new("Providers", true);
         for provider_id in ProviderId::all() {
             let cli_name = provider_id.cli_name();
             let display_name = provider_id.display_name();
