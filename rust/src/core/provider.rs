@@ -87,7 +87,7 @@ impl ProviderId {
             ProviderId::Codex => "Codex",
             ProviderId::Claude => "Claude",
             ProviderId::Cursor => "Cursor",
-            ProviderId::Factory => "Droid",
+            ProviderId::Factory => "Factory",
             ProviderId::Gemini => "Gemini",
             ProviderId::Antigravity => "Antigravity",
             ProviderId::Copilot => "Copilot",
