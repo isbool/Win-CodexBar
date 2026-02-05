@@ -1,11 +1,35 @@
 //! Auto-update checker for CodexBar
-//! Checks GitHub releases for new versions
+//! Checks GitHub releases for new versions and handles background downloads
 
 use serde::Deserialize;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::watch;
 use crate::settings::UpdateChannel;
 
 const GITHUB_REPO: &str = "Finesssee/Win-CodexBar";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// State of the update download process
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateState {
+    /// No update available or not checked
+    Idle,
+    /// Update available but not downloaded
+    Available,
+    /// Currently downloading with progress (0.0 to 1.0)
+    Downloading(f32),
+    /// Download complete, ready to install
+    Ready(PathBuf),
+    /// Download or install failed
+    Failed(String),
+}
+
+impl Default for UpdateState {
+    fn default() -> Self {
+        UpdateState::Idle
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct UpdateInfo {
@@ -146,6 +170,187 @@ fn is_newer_version(remote: &str, current: &str) -> bool {
 #[allow(dead_code)]
 pub fn current_version() -> &'static str {
     CURRENT_VERSION
+}
+
+/// Get the download directory for updates
+fn get_download_dir() -> Option<PathBuf> {
+    dirs::cache_dir().map(|p| p.join("CodexBar").join("updates"))
+}
+
+/// Download an update with progress reporting
+///
+/// Returns a receiver that will receive progress updates (0.0 to 1.0)
+/// and the final downloaded file path on completion.
+pub async fn download_update(
+    update_info: &UpdateInfo,
+    progress_tx: watch::Sender<UpdateState>,
+) -> Result<PathBuf, String> {
+    let download_dir = get_download_dir()
+        .ok_or_else(|| "Could not determine download directory".to_string())?;
+
+    // Create download directory if it doesn't exist
+    std::fs::create_dir_all(&download_dir)
+        .map_err(|e| format!("Failed to create download directory: {}", e))?;
+
+    // Extract filename from URL or use default
+    let filename = update_info.download_url
+        .split('/')
+        .last()
+        .unwrap_or("CodexBar-Setup.exe")
+        .to_string();
+
+    let file_path = download_dir.join(&filename);
+
+    // Start download
+    let client = reqwest::Client::builder()
+        .user_agent("CodexBar")
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get(&update_info.download_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start download: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+
+    // Create file for writing
+    let mut file = tokio::fs::File::create(&file_path)
+        .await
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+
+    use tokio::io::AsyncWriteExt;
+
+    let mut downloaded: u64 = 0;
+    let mut stream = response.bytes_stream();
+
+    use futures::StreamExt;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Error downloading chunk: {}", e))?;
+
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Failed to write chunk: {}", e))?;
+
+        downloaded += chunk.len() as u64;
+
+        // Calculate and send progress
+        let progress = if total_size > 0 {
+            (downloaded as f32 / total_size as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        let _ = progress_tx.send(UpdateState::Downloading(progress));
+    }
+
+    file.flush()
+        .await
+        .map_err(|e| format!("Failed to flush file: {}", e))?;
+
+    // Signal download complete
+    let _ = progress_tx.send(UpdateState::Ready(file_path.clone()));
+
+    Ok(file_path)
+}
+
+/// Start background download of an update
+///
+/// Returns a receiver that can be polled for progress updates.
+#[allow(dead_code)]
+pub fn start_background_download(
+    update_info: UpdateInfo,
+) -> (Arc<watch::Receiver<UpdateState>>, std::thread::JoinHandle<()>) {
+    let (tx, rx) = watch::channel(UpdateState::Available);
+    let rx = Arc::new(rx);
+
+    let handle = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            match download_update(&update_info, tx.clone()).await {
+                Ok(_path) => {
+                    // UpdateState::Ready is already sent by download_update
+                }
+                Err(e) => {
+                    let _ = tx.send(UpdateState::Failed(e));
+                }
+            }
+        });
+    });
+
+    (rx, handle)
+}
+
+/// Apply a downloaded update by spawning the installer and exiting
+///
+/// This function will:
+/// 1. Spawn the installer executable
+/// 2. Exit the current application
+///
+/// The installer should handle upgrading the application while it's closed.
+pub fn apply_update(installer_path: &PathBuf) -> Result<(), String> {
+    use std::process::Command;
+
+    // Verify the file exists
+    if !installer_path.exists() {
+        return Err(format!("Installer not found: {:?}", installer_path));
+    }
+
+    // Spawn the installer process
+    // Using /SILENT for NSIS-style installers, or /quiet for MSI
+    // The installer should detect the running app and wait or prompt
+    #[cfg(target_os = "windows")]
+    {
+        Command::new(installer_path)
+            .args(["/SILENT", "/CLOSEAPPLICATIONS"])
+            .spawn()
+            .map_err(|e| format!("Failed to launch installer: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new(installer_path)
+            .spawn()
+            .map_err(|e| format!("Failed to launch installer: {}", e))?;
+    }
+
+    // Exit the application to allow the installer to proceed
+    std::process::exit(0);
+}
+
+/// Check if there's a pending update ready to install
+#[allow(dead_code)]
+pub fn get_pending_update() -> Option<PathBuf> {
+    let download_dir = get_download_dir()?;
+
+    if !download_dir.exists() {
+        return None;
+    }
+
+    // Look for any .exe files in the updates directory
+    std::fs::read_dir(&download_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.extension()
+                .map(|ext| ext.eq_ignore_ascii_case("exe"))
+                .unwrap_or(false)
+        })
+}
+
+/// Clean up downloaded updates
+#[allow(dead_code)]
+pub fn cleanup_downloads() {
+    if let Some(download_dir) = get_download_dir() {
+        let _ = std::fs::remove_dir_all(&download_dir);
+    }
 }
 
 #[cfg(test)]

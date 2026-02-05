@@ -24,8 +24,8 @@ use crate::settings::{ApiKeys, ManualCookies, Settings};
 use crate::browser::cookies::get_cookie_header;
 use crate::shortcuts::{parse_shortcut, ShortcutManager};
 use crate::status::{fetch_provider_status, get_status_page_url, StatusLevel};
-use crate::tray::{LoadingPattern, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction};
-use crate::updater::{self, UpdateInfo};
+use crate::tray::{LoadingPattern, ProviderUsage, SurpriseAnimation, TrayMenuAction, UnifiedTrayManager};
+use crate::updater::{self, UpdateInfo, UpdateState};
 
 #[derive(Clone, Debug)]
 pub struct ProviderData {
@@ -297,6 +297,7 @@ struct SharedState {
     update_available: Option<UpdateInfo>,
     update_checked: bool,
     update_dismissed: bool,
+    update_state: UpdateState,
     login_provider: Option<String>,
     login_phase: LoginPhase,
     login_message: Option<String>,
@@ -305,7 +306,7 @@ struct SharedState {
 pub struct CodexBarApp {
     state: Arc<Mutex<SharedState>>,
     settings: Settings,
-    tray_manager: Option<TrayManager>,
+    tray_manager: Option<UnifiedTrayManager>,
     preferences_window: PreferencesWindow,
     shortcut_manager: Option<ShortcutManager>,
     icon_cache: ProviderIconCache,
@@ -372,13 +373,14 @@ impl CodexBarApp {
             update_available: None,
             update_checked: false,
             update_dismissed: false,
+            update_state: UpdateState::Idle,
             login_provider: None,
             login_phase: LoginPhase::Idle,
             login_message: None,
         }));
 
-        // Initialize system tray
-        let tray_manager = match TrayManager::new() {
+        // Initialize system tray based on settings
+        let tray_manager = match UnifiedTrayManager::new(&settings) {
             Ok(tm) => Some(tm),
             Err(e) => {
                 tracing::warn!("Failed to create tray manager: {}", e);
@@ -390,13 +392,56 @@ impl CodexBarApp {
         {
             let state = Arc::clone(&state);
             let update_channel = settings.update_channel;
+            let auto_download = settings.auto_download_updates;
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 rt.block_on(async {
                     if let Some(update) = updater::check_for_updates_with_channel(update_channel).await {
-                        if let Ok(mut s) = state.lock() {
-                            s.update_available = Some(update);
-                            s.update_checked = true;
+                        let should_download = {
+                            if let Ok(mut s) = state.lock() {
+                                s.update_available = Some(update.clone());
+                                s.update_checked = true;
+                                s.update_state = UpdateState::Available;
+                                auto_download
+                            } else {
+                                false
+                            }
+                        };
+
+                        // Start background download if auto-download is enabled
+                        if should_download {
+                            let (progress_tx, mut progress_rx) = tokio::sync::watch::channel(UpdateState::Available);
+                            let state_clone = Arc::clone(&state);
+
+                            // Update state to downloading
+                            if let Ok(mut s) = state_clone.lock() {
+                                s.update_state = UpdateState::Downloading(0.0);
+                            }
+
+                            // Spawn a task to monitor progress updates
+                            let progress_state = Arc::clone(&state_clone);
+                            tokio::spawn(async move {
+                                while progress_rx.changed().await.is_ok() {
+                                    let new_state = progress_rx.borrow().clone();
+                                    if let Ok(mut s) = progress_state.lock() {
+                                        s.update_state = new_state;
+                                    }
+                                }
+                            });
+
+                            match updater::download_update(&update, progress_tx).await {
+                                Ok(path) => {
+                                    if let Ok(mut s) = state_clone.lock() {
+                                        s.update_state = UpdateState::Ready(path);
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to download update: {}", e);
+                                    if let Ok(mut s) = state_clone.lock() {
+                                        s.update_state = UpdateState::Failed(e);
+                                    }
+                                }
+                            }
                         }
                     } else if let Ok(mut s) = state.lock() {
                         s.update_checked = true;
@@ -647,7 +692,7 @@ impl eframe::App for CodexBarApp {
         }
 
         // Get state
-        let (providers, selected_idx, is_refreshing, loading_pattern, loading_phase, surprise_state, update_info, login_state) = {
+        let (providers, selected_idx, is_refreshing, loading_pattern, loading_phase, surprise_state, update_info, update_download_state, login_state) = {
             if let Ok(mut state) = self.state.lock() {
                 if state.is_refreshing {
                     state.loading_phase += 0.05;
@@ -685,15 +730,17 @@ impl eframe::App for CodexBarApp {
                     state.update_available.clone()
                 };
 
+                let update_download_state = state.update_state.clone();
+
                 let login_state = (
                     state.login_provider.clone(),
                     state.login_phase,
                     state.login_message.clone(),
                 );
 
-                (state.providers.clone(), state.selected_provider_idx, state.is_refreshing, state.loading_pattern, state.loading_phase, surprise, update, login_state)
+                (state.providers.clone(), state.selected_provider_idx, state.is_refreshing, state.loading_pattern, state.loading_phase, surprise, update, update_download_state, login_state)
             } else {
-                (Vec::new(), 0, false, LoadingPattern::default(), 0.0, None, None, (None, LoginPhase::Idle, None))
+                (Vec::new(), 0, false, LoadingPattern::default(), 0.0, None, None, UpdateState::Idle, (None, LoginPhase::Idle, None))
             }
         };
 
@@ -768,7 +815,7 @@ impl eframe::App for CodexBarApp {
                 }
             }
 
-            if let Some(action) = TrayManager::check_events() {
+            if let Some(action) = UnifiedTrayManager::check_events() {
                 match action {
                     TrayMenuAction::Quit => std::process::exit(0),
                     TrayMenuAction::Open => {
@@ -851,36 +898,166 @@ impl eframe::App for CodexBarApp {
                             .rounding(Rounding::same(Radius::LG))
                             .inner_margin(Spacing::MD)
                             .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new("🎉").size(FontSize::MD));
-                                    ui.add_space(Spacing::XS);
-                                    ui.label(
-                                        RichText::new(format!("Update available: {}", update.version))
-                                            .size(FontSize::BASE)
-                                            .color(Color32::WHITE)
-                                            .strong(),
-                                    );
+                                ui.vertical(|ui| {
+                                    ui.horizontal(|ui| {
+                                        // Icon based on state
+                                        let icon = match &update_download_state {
+                                            UpdateState::Ready(_) => "✓",
+                                            UpdateState::Failed(_) => "⚠",
+                                            UpdateState::Downloading(_) => "↓",
+                                            _ => "🎉",
+                                        };
+                                        ui.label(RichText::new(icon).size(FontSize::MD).color(Color32::WHITE));
+                                        ui.add_space(Spacing::XS);
 
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.add(
-                                            egui::Button::new(RichText::new("✕").size(FontSize::SM).color(Color32::WHITE))
-                                                .fill(Color32::TRANSPARENT)
-                                                .stroke(Stroke::NONE)
-                                        ).clicked() {
-                                            if let Ok(mut s) = self.state.lock() {
-                                                s.update_dismissed = true;
+                                        // Message based on state
+                                        let message = match &update_download_state {
+                                            UpdateState::Downloading(progress) => {
+                                                format!("Downloading {} ({:.0}%)", update.version, progress * 100.0)
                                             }
-                                        }
+                                            UpdateState::Ready(_) => {
+                                                format!("Update {} ready to install", update.version)
+                                            }
+                                            UpdateState::Failed(e) => {
+                                                format!("Update failed: {}", e)
+                                            }
+                                            _ => {
+                                                format!("Update available: {}", update.version)
+                                            }
+                                        };
+                                        ui.label(
+                                            RichText::new(message)
+                                                .size(FontSize::BASE)
+                                                .color(Color32::WHITE)
+                                                .strong(),
+                                        );
 
-                                        let download_url = update.download_url.clone();
-                                        if ui.add(
-                                            egui::Button::new(RichText::new("Download").size(FontSize::SM).color(Theme::ACCENT_PRIMARY))
-                                                .fill(Color32::WHITE)
-                                                .rounding(Rounding::same(Radius::SM))
-                                        ).clicked() {
-                                            let _ = open::that(&download_url);
-                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            // Dismiss button
+                                            if ui.add(
+                                                egui::Button::new(RichText::new("✕").size(FontSize::SM).color(Color32::WHITE))
+                                                    .fill(Color32::TRANSPARENT)
+                                                    .stroke(Stroke::NONE)
+                                            ).clicked() {
+                                                if let Ok(mut s) = self.state.lock() {
+                                                    s.update_dismissed = true;
+                                                }
+                                            }
+
+                                            // Action button based on state
+                                            match &update_download_state {
+                                                UpdateState::Ready(path) => {
+                                                    let installer_path = path.clone();
+                                                    if ui.add(
+                                                        egui::Button::new(RichText::new("Restart & Update").size(FontSize::SM).color(Theme::ACCENT_PRIMARY))
+                                                            .fill(Color32::WHITE)
+                                                            .rounding(Rounding::same(Radius::SM))
+                                                    ).clicked() {
+                                                        if let Err(e) = updater::apply_update(&installer_path) {
+                                                            tracing::error!("Failed to apply update: {}", e);
+                                                        }
+                                                    }
+                                                }
+                                                UpdateState::Downloading(_) => {
+                                                    // Show a small spinner or just the progress in the message
+                                                    ui.spinner();
+                                                }
+                                                UpdateState::Failed(_) => {
+                                                    let download_url = update.download_url.clone();
+                                                    if ui.add(
+                                                        egui::Button::new(RichText::new("Retry").size(FontSize::SM).color(Theme::ACCENT_PRIMARY))
+                                                            .fill(Color32::WHITE)
+                                                            .rounding(Rounding::same(Radius::SM))
+                                                    ).clicked() {
+                                                        // Retry download
+                                                        let state = Arc::clone(&self.state);
+                                                        let update_clone = update.clone();
+                                                        std::thread::spawn(move || {
+                                                            let rt = tokio::runtime::Runtime::new().unwrap();
+                                                            rt.block_on(async {
+                                                                if let Ok(mut s) = state.lock() {
+                                                                    s.update_state = UpdateState::Downloading(0.0);
+                                                                }
+                                                                let (progress_tx, _) = tokio::sync::watch::channel(UpdateState::Available);
+                                                                match updater::download_update(&update_clone, progress_tx).await {
+                                                                    Ok(path) => {
+                                                                        if let Ok(mut s) = state.lock() {
+                                                                            s.update_state = UpdateState::Ready(path);
+                                                                        }
+                                                                    }
+                                                                    Err(e) => {
+                                                                        if let Ok(mut s) = state.lock() {
+                                                                            s.update_state = UpdateState::Failed(e);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            });
+                                                        });
+                                                    }
+                                                    // Also show manual download link
+                                                    if ui.add(
+                                                        egui::Button::new(RichText::new("Download").size(FontSize::SM).color(Color32::WHITE))
+                                                            .fill(Color32::TRANSPARENT)
+                                                            .stroke(Stroke::new(1.0, Color32::WHITE))
+                                                            .rounding(Rounding::same(Radius::SM))
+                                                    ).clicked() {
+                                                        let _ = open::that(&download_url);
+                                                    }
+                                                }
+                                                _ => {
+                                                    // Available or Idle - show download button
+                                                    let update_clone = update.clone();
+                                                    if ui.add(
+                                                        egui::Button::new(RichText::new("Download").size(FontSize::SM).color(Theme::ACCENT_PRIMARY))
+                                                            .fill(Color32::WHITE)
+                                                            .rounding(Rounding::same(Radius::SM))
+                                                    ).clicked() {
+                                                        // Start download
+                                                        let state = Arc::clone(&self.state);
+                                                        std::thread::spawn(move || {
+                                                            let rt = tokio::runtime::Runtime::new().unwrap();
+                                                            rt.block_on(async {
+                                                                if let Ok(mut s) = state.lock() {
+                                                                    s.update_state = UpdateState::Downloading(0.0);
+                                                                }
+                                                                let (progress_tx, _) = tokio::sync::watch::channel(UpdateState::Available);
+                                                                match updater::download_update(&update_clone, progress_tx).await {
+                                                                    Ok(path) => {
+                                                                        if let Ok(mut s) = state.lock() {
+                                                                            s.update_state = UpdateState::Ready(path);
+                                                                        }
+                                                                    }
+                                                                    Err(e) => {
+                                                                        if let Ok(mut s) = state.lock() {
+                                                                            s.update_state = UpdateState::Failed(e);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            });
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                        });
                                     });
+
+                                    // Show download progress bar when downloading
+                                    if let UpdateState::Downloading(progress) = &update_download_state {
+                                        ui.add_space(Spacing::XS);
+                                        let bar_width = ui.available_width();
+                                        let bar_height = 4.0;
+                                        let (rect, _) = ui.allocate_exact_size(Vec2::new(bar_width, bar_height), egui::Sense::hover());
+
+                                        // Track (semi-transparent white)
+                                        ui.painter().rect_filled(rect, Rounding::same(2.0), Color32::from_rgba_unmultiplied(255, 255, 255, 80));
+
+                                        // Fill (solid white)
+                                        let fill_w = rect.width() * progress.clamp(0.0, 1.0);
+                                        if fill_w > 0.0 {
+                                            let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, bar_height));
+                                            ui.painter().rect_filled(fill_rect, Rounding::same(2.0), Color32::WHITE);
+                                        }
+                                    }
                                 });
                             });
                         ui.add_space(Spacing::MD);

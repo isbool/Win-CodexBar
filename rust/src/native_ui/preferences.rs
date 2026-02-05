@@ -11,7 +11,7 @@ use eframe::egui::{self, Color32, RichText, Rounding, Stroke, Vec2, Rect};
 
 use super::provider_icons::ProviderIconCache;
 use super::theme::{provider_color, provider_icon, FontSize, Radius, Spacing, Theme};
-use crate::settings::{ApiKeys, ManualCookies, Settings, get_api_key_providers};
+use crate::settings::{ApiKeys, ManualCookies, Settings, TrayIconMode, get_api_key_providers};
 use crate::core::{PersonalInfoRedactor, ProviderId, WidgetSnapshot, WidgetSnapshotStore};
 use crate::core::{TokenAccountStore, TokenAccount, TokenAccountSupport, ProviderAccountData};
 use crate::browser::detection::{BrowserDetector, BrowserType};
@@ -1001,6 +1001,18 @@ impl PreferencesWindow {
             let mut merge_icons = self.settings.merge_tray_icons;
             if setting_toggle(ui, "Merge tray icons", "Show all providers in a single tray icon", &mut merge_icons) {
                 self.settings.merge_tray_icons = merge_icons;
+                self.settings_changed = true;
+            }
+
+            setting_divider(ui);
+
+            let mut per_provider = self.settings.tray_icon_mode == TrayIconMode::PerProvider;
+            if setting_toggle(ui, "Per-provider icons", "Show a separate tray icon for each enabled provider", &mut per_provider) {
+                self.settings.tray_icon_mode = if per_provider {
+                    TrayIconMode::PerProvider
+                } else {
+                    TrayIconMode::Single
+                };
                 self.settings_changed = true;
             }
         });

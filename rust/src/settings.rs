@@ -41,6 +41,35 @@ impl UpdateChannel {
     }
 }
 
+/// Tray icon display mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TrayIconMode {
+    /// Single tray icon showing the primary provider or merged view
+    #[default]
+    Single,
+    /// One tray icon per enabled provider
+    PerProvider,
+}
+
+impl TrayIconMode {
+    /// Get the display name for this mode
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            TrayIconMode::Single => "Single Icon",
+            TrayIconMode::PerProvider => "Per Provider",
+        }
+    }
+
+    /// Get a description for this mode
+    pub fn description(&self) -> &'static str {
+        match self {
+            TrayIconMode::Single => "Show one tray icon for all providers",
+            TrayIconMode::PerProvider => "Show a separate tray icon for each enabled provider",
+        }
+    }
+}
+
 /// Metric preference for display in tray and UI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -126,6 +155,10 @@ pub struct Settings {
     /// Merge mode: show all enabled providers in a single tray icon
     pub merge_tray_icons: bool,
 
+    /// Tray icon display mode: single icon or per-provider icons
+    #[serde(default)]
+    pub tray_icon_mode: TrayIconMode,
+
     /// Show usage bars as "used" (true) or "remaining" (false)
     pub show_as_used: bool,
 
@@ -157,6 +190,18 @@ pub struct Settings {
     /// Global keyboard shortcut to open the menu (e.g., "Ctrl+Shift+U")
     #[serde(default = "default_global_shortcut")]
     pub global_shortcut: String,
+
+    /// Automatically download updates in the background
+    #[serde(default = "default_true")]
+    pub auto_download_updates: bool,
+
+    /// Install pending updates when quitting the application
+    #[serde(default)]
+    pub install_updates_on_quit: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_global_shortcut() -> String {
@@ -181,6 +226,7 @@ impl Default for Settings {
             high_usage_threshold: 70.0,
             critical_usage_threshold: 90.0,
             merge_tray_icons: false, // Show single provider by default
+            tray_icon_mode: TrayIconMode::default(), // Single icon by default
             show_as_used: true,      // Show as "used" by default
             surprise_animations: false, // Off by default
             enable_animations: true, // Animations enabled by default
@@ -191,6 +237,8 @@ impl Default for Settings {
             update_channel: UpdateChannel::default(), // Stable by default
             provider_metrics: HashMap::new(), // Empty = use Automatic for all
             global_shortcut: default_global_shortcut(), // Ctrl+Shift+U by default
+            auto_download_updates: true, // Auto-download updates by default
+            install_updates_on_quit: false, // Don't auto-install on quit by default
         }
     }
 }

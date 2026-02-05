@@ -413,7 +413,7 @@ mod tests {
         assert_eq!(ProviderId::from_cli_name("CLAUDE"), Some(ProviderId::Claude));
         assert_eq!(ProviderId::from_cli_name("codex"), Some(ProviderId::Codex));
         assert_eq!(ProviderId::from_cli_name("openai"), Some(ProviderId::Codex));
-        assert_eq!(ProviderId::from_cli_name("windsurf"), Some(ProviderId::Factory));
+        assert_eq!(ProviderId::from_cli_name("factory"), Some(ProviderId::Factory));
         assert_eq!(ProviderId::from_cli_name("zed"), Some(ProviderId::Zai));
         assert_eq!(ProviderId::from_cli_name("unknown"), None);
     }

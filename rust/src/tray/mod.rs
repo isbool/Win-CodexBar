@@ -14,7 +14,7 @@ pub mod weekly_indicator;
 pub use blink::{BlinkConfig, BlinkOutput, BlinkState, EyeBlinkSystem, MotionEffect};
 pub use icon::LoadingPattern;
 pub use icon_twist::{Decoration, DecorationKind, EyeShape, IconFeatures, IconTwist};
-pub use manager::{IconOverlay, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction};
+pub use manager::{IconOverlay, MultiTrayManager, ProviderUsage, SurpriseAnimation, TrayManager, TrayMenuAction, UnifiedTrayManager};
 pub use menu_invalidation::{
     MenuDirtyState, MenuInvalidationTracker, MenuSection, StalenessChecker,
     MENU_OPEN_REFRESH_DELAY,

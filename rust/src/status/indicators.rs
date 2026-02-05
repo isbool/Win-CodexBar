@@ -73,6 +73,31 @@ impl StatusLevel {
         }
     }
 
+    /// Get a status prefix for menu items (colored Unicode dots)
+    /// Returns empty string for Operational status (no dot needed)
+    pub fn status_prefix(&self) -> &'static str {
+        match self {
+            StatusLevel::Operational => "",
+            StatusLevel::Minor => "\u{1F7E1} ",      // Yellow circle
+            StatusLevel::Major => "\u{1F7E0} ",      // Orange circle
+            StatusLevel::Critical => "\u{1F534} ",   // Red circle
+            StatusLevel::Maintenance => "\u{1F535} ", // Blue circle
+            StatusLevel::Unknown => "",              // No dot for unknown
+        }
+    }
+
+    /// Get an ASCII-safe status prefix for menu items (fallback for systems without Unicode support)
+    pub fn status_prefix_ascii(&self) -> &'static str {
+        match self {
+            StatusLevel::Operational => "",
+            StatusLevel::Minor => "[!] ",
+            StatusLevel::Major => "[!!] ",
+            StatusLevel::Critical => "[X] ",
+            StatusLevel::Maintenance => "[M] ",
+            StatusLevel::Unknown => "",
+        }
+    }
+
     /// Parse from Statuspage.io status string
     pub fn from_statuspage(status: &str) -> Self {
         match status.to_lowercase().as_str() {
@@ -264,5 +289,29 @@ mod tests {
         assert!(!StatusLevel::Operational.should_show_overlay());
         assert!(StatusLevel::Minor.should_show_overlay());
         assert!(StatusLevel::Critical.should_show_overlay());
+    }
+
+    #[test]
+    fn test_status_prefix() {
+        // Operational should have no prefix
+        assert_eq!(StatusLevel::Operational.status_prefix(), "");
+        // Non-operational statuses should have colored dot prefixes
+        assert!(!StatusLevel::Minor.status_prefix().is_empty());
+        assert!(!StatusLevel::Major.status_prefix().is_empty());
+        assert!(!StatusLevel::Critical.status_prefix().is_empty());
+        assert!(!StatusLevel::Maintenance.status_prefix().is_empty());
+        // Unknown should have no prefix
+        assert_eq!(StatusLevel::Unknown.status_prefix(), "");
+    }
+
+    #[test]
+    fn test_status_prefix_ascii() {
+        // Operational should have no prefix
+        assert_eq!(StatusLevel::Operational.status_prefix_ascii(), "");
+        // Non-operational statuses should have ASCII prefixes
+        assert_eq!(StatusLevel::Minor.status_prefix_ascii(), "[!] ");
+        assert_eq!(StatusLevel::Major.status_prefix_ascii(), "[!!] ");
+        assert_eq!(StatusLevel::Critical.status_prefix_ascii(), "[X] ");
+        assert_eq!(StatusLevel::Maintenance.status_prefix_ascii(), "[M] ");
     }
 }

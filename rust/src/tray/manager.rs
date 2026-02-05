@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 
 use image::{ImageBuffer, Rgba, RgbaImage};
+use std::collections::HashMap;
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu, CheckMenuItem},
     Icon, TrayIcon, TrayIconBuilder,
@@ -12,7 +13,8 @@ use tray_icon::{
 
 use super::icon::{LoadingPattern, UsageLevel};
 use crate::core::ProviderId;
-use crate::settings::Settings;
+use crate::settings::{Settings, TrayIconMode};
+use crate::status::IndicatorStatusLevel;
 
 const ICON_SIZE: u32 = 32;
 
@@ -90,6 +92,8 @@ pub struct ProviderUsage {
 /// System tray manager
 pub struct TrayManager {
     tray_icon: TrayIcon,
+    /// Provider menu items for updating with status prefixes
+    provider_menu_items: HashMap<ProviderId, CheckMenuItem>,
 }
 
 impl TrayManager {
@@ -115,6 +119,7 @@ impl TrayManager {
         // Providers submenu with check items
         // Build submenu items first, then add to parent menu to avoid Windows duplication bug
         let providers_submenu = Submenu::new("Providers", true);
+        let mut provider_menu_items = HashMap::new();
         for provider_id in ProviderId::all() {
             let cli_name = provider_id.cli_name();
             let display_name = provider_id.display_name();
@@ -122,6 +127,7 @@ impl TrayManager {
             let item_id = format!("provider_{}", cli_name);
             let check_item = CheckMenuItem::with_id(&item_id, display_name, true, is_enabled, None);
             providers_submenu.append(&check_item)?;
+            provider_menu_items.insert(*provider_id, check_item);
         }
         menu.append(&providers_submenu)?;
 
@@ -151,7 +157,7 @@ impl TrayManager {
             .with_icon(icon)
             .build()?;
 
-        Ok(Self { tray_icon })
+        Ok(Self { tray_icon, provider_menu_items })
     }
 
     /// Update the tray icon based on usage percentages (single provider mode)
@@ -276,6 +282,41 @@ impl TrayManager {
         let _ = self.tray_icon.set_icon(Some(icon));
     }
 
+    /// Update provider menu item labels with status prefixes (colored dots)
+    ///
+    /// Takes a map of provider IDs to their current status levels and updates
+    /// the corresponding menu item labels to show status dots for non-operational providers.
+    pub fn update_provider_statuses(&self, statuses: &HashMap<ProviderId, IndicatorStatusLevel>) {
+        for (provider_id, check_item) in &self.provider_menu_items {
+            let base_name = provider_id.display_name();
+            if let Some(status_level) = statuses.get(provider_id) {
+                let prefix = status_level.status_prefix();
+                let new_label = format!("{}{}", prefix, base_name);
+                check_item.set_text(&new_label);
+            } else {
+                // No status info, show plain name
+                check_item.set_text(base_name);
+            }
+        }
+    }
+
+    /// Update a single provider's menu item label with status prefix
+    pub fn update_provider_status(&self, provider_id: ProviderId, status_level: IndicatorStatusLevel) {
+        if let Some(check_item) = self.provider_menu_items.get(&provider_id) {
+            let base_name = provider_id.display_name();
+            let prefix = status_level.status_prefix();
+            let new_label = format!("{}{}", prefix, base_name);
+            check_item.set_text(&new_label);
+        }
+    }
+
+    /// Clear status prefix from a provider's menu item (revert to plain name)
+    pub fn clear_provider_status(&self, provider_id: ProviderId) {
+        if let Some(check_item) = self.provider_menu_items.get(&provider_id) {
+            check_item.set_text(provider_id.display_name());
+        }
+    }
+
     /// Check for menu events
     pub fn check_events() -> Option<TrayMenuAction> {
         if let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -307,6 +348,255 @@ pub enum TrayMenuAction {
     CheckForUpdates,
     ToggleProvider(String),
     Quit,
+}
+
+/// Multi-provider tray manager for per-provider icon mode
+/// Creates and manages one tray icon per enabled provider
+pub struct MultiTrayManager {
+    /// Map of provider ID to their individual tray icon
+    provider_icons: HashMap<ProviderId, TrayIcon>,
+}
+
+impl MultiTrayManager {
+    /// Create a new multi-tray manager with icons for enabled providers
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            provider_icons: HashMap::new(),
+        })
+    }
+
+    /// Sync tray icons with enabled providers
+    /// Adds icons for newly enabled providers and removes icons for disabled ones
+    pub fn sync_providers(&mut self, enabled_providers: &[ProviderId]) -> anyhow::Result<()> {
+        // Remove icons for providers that are no longer enabled
+        let enabled_set: std::collections::HashSet<_> = enabled_providers.iter().collect();
+        self.provider_icons.retain(|id, _| enabled_set.contains(id));
+
+        // Add icons for newly enabled providers
+        for provider_id in enabled_providers {
+            if !self.provider_icons.contains_key(provider_id) {
+                if let Ok(icon) = self.create_provider_icon(*provider_id) {
+                    self.provider_icons.insert(*provider_id, icon);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Create a tray icon for a specific provider
+    fn create_provider_icon(&self, provider_id: ProviderId) -> anyhow::Result<TrayIcon> {
+        let menu = Menu::new();
+
+        // Provider name header (disabled menu item)
+        let header = MenuItem::with_id(
+            &format!("header_{}", provider_id.cli_name()),
+            provider_id.display_name(),
+            false,
+            None,
+        );
+        menu.append(&header)?;
+
+        menu.append(&PredefinedMenuItem::separator())?;
+
+        // Open CodexBar
+        let open_item = MenuItem::with_id("open", "Open CodexBar", true, None);
+        menu.append(&open_item)?;
+
+        // Refresh
+        let refresh_item = MenuItem::with_id(
+            &format!("refresh_{}", provider_id.cli_name()),
+            "Refresh",
+            true,
+            None,
+        );
+        menu.append(&refresh_item)?;
+
+        menu.append(&PredefinedMenuItem::separator())?;
+
+        // Settings
+        let settings_item = MenuItem::with_id("settings", "Settings...", true, None);
+        menu.append(&settings_item)?;
+
+        menu.append(&PredefinedMenuItem::separator())?;
+
+        // Quit
+        let quit_item = MenuItem::with_id("quit", "Quit", true, None);
+        menu.append(&quit_item)?;
+
+        let icon = create_bar_icon(0.0, 0.0, IconOverlay::None);
+        let tooltip = format!("{} - Loading...", provider_id.display_name());
+
+        let tray_icon = TrayIconBuilder::new()
+            .with_menu(Box::new(menu))
+            .with_tooltip(&tooltip)
+            .with_icon(icon)
+            .build()?;
+
+        Ok(tray_icon)
+    }
+
+    /// Update a specific provider's tray icon
+    pub fn update_provider(&self, provider_id: ProviderId, session_percent: f64, weekly_percent: f64) {
+        if let Some(tray_icon) = self.provider_icons.get(&provider_id) {
+            let icon = create_bar_icon(session_percent, weekly_percent, IconOverlay::None);
+            let _ = tray_icon.set_icon(Some(icon));
+
+            let tooltip = format!(
+                "{}: Session {}% | Weekly {}%",
+                provider_id.display_name(),
+                session_percent as i32,
+                weekly_percent as i32
+            );
+            let _ = tray_icon.set_tooltip(Some(&tooltip));
+        }
+    }
+
+    /// Update a specific provider's tray icon with an overlay
+    pub fn update_provider_with_overlay(
+        &self,
+        provider_id: ProviderId,
+        session_percent: f64,
+        weekly_percent: f64,
+        overlay: IconOverlay,
+    ) {
+        if let Some(tray_icon) = self.provider_icons.get(&provider_id) {
+            let icon = create_bar_icon(session_percent, weekly_percent, overlay);
+            let _ = tray_icon.set_icon(Some(icon));
+
+            let status_suffix = match overlay {
+                IconOverlay::None => "",
+                IconOverlay::Error => " (Error)",
+                IconOverlay::Stale => " (Stale)",
+                IconOverlay::Incident => " (Incident)",
+                IconOverlay::Partial => " (Partial Outage)",
+            };
+
+            let tooltip = format!(
+                "{}: Session {}% | Weekly {}%{}",
+                provider_id.display_name(),
+                session_percent as i32,
+                weekly_percent as i32,
+                status_suffix
+            );
+            let _ = tray_icon.set_tooltip(Some(&tooltip));
+        }
+    }
+
+    /// Show loading state for a specific provider
+    pub fn show_provider_loading(&self, provider_id: ProviderId, pattern: LoadingPattern, phase: f64) {
+        if let Some(tray_icon) = self.provider_icons.get(&provider_id) {
+            let primary = pattern.value(phase);
+            let secondary = pattern.value(phase + pattern.secondary_offset());
+
+            let icon = create_loading_icon(primary, secondary);
+            let _ = tray_icon.set_icon(Some(icon));
+            let _ = tray_icon.set_tooltip(Some(&format!("{} - Loading...", provider_id.display_name())));
+        }
+    }
+
+    /// Show error state for a specific provider
+    pub fn show_provider_error(&self, provider_id: ProviderId, error_msg: &str) {
+        if let Some(tray_icon) = self.provider_icons.get(&provider_id) {
+            let icon = create_bar_icon(0.0, 0.0, IconOverlay::Error);
+            let _ = tray_icon.set_icon(Some(icon));
+            let tooltip = format!("{}: {}", provider_id.display_name(), error_msg);
+            let _ = tray_icon.set_tooltip(Some(&tooltip));
+        }
+    }
+
+    /// Get the number of active provider icons
+    pub fn icon_count(&self) -> usize {
+        self.provider_icons.len()
+    }
+
+    /// Check if a provider has an icon
+    pub fn has_provider(&self, provider_id: ProviderId) -> bool {
+        self.provider_icons.contains_key(&provider_id)
+    }
+}
+
+/// Unified tray icon manager that supports both single and per-provider modes
+pub enum UnifiedTrayManager {
+    /// Single icon mode (original behavior)
+    Single(TrayManager),
+    /// Per-provider icon mode
+    PerProvider(MultiTrayManager),
+}
+
+impl UnifiedTrayManager {
+    /// Create a new unified tray manager based on settings
+    pub fn new(settings: &Settings) -> anyhow::Result<Self> {
+        match settings.tray_icon_mode {
+            TrayIconMode::Single => Ok(UnifiedTrayManager::Single(TrayManager::new()?)),
+            TrayIconMode::PerProvider => {
+                let mut multi = MultiTrayManager::new()?;
+                let enabled = settings.get_enabled_provider_ids();
+                multi.sync_providers(&enabled)?;
+                Ok(UnifiedTrayManager::PerProvider(multi))
+            }
+        }
+    }
+
+    /// Check if we need to recreate the manager due to mode change
+    pub fn needs_mode_switch(&self, new_mode: TrayIconMode) -> bool {
+        match (self, new_mode) {
+            (UnifiedTrayManager::Single(_), TrayIconMode::PerProvider) => true,
+            (UnifiedTrayManager::PerProvider(_), TrayIconMode::Single) => true,
+            _ => false,
+        }
+    }
+
+    /// Check for menu events (delegates to TrayManager's static method)
+    pub fn check_events() -> Option<TrayMenuAction> {
+        TrayManager::check_events()
+    }
+
+    /// Show loading animation
+    pub fn show_loading(&self, pattern: LoadingPattern, phase: f64) {
+        match self {
+            UnifiedTrayManager::Single(tm) => tm.show_loading(pattern, phase),
+            UnifiedTrayManager::PerProvider(_) => {
+                // In per-provider mode, we could animate all icons or skip
+                // For now, skip loading animation in per-provider mode
+            }
+        }
+    }
+
+    /// Show surprise animation
+    pub fn show_surprise(&self, anim: SurpriseAnimation, frame: u32, session: f64, weekly: f64) {
+        match self {
+            UnifiedTrayManager::Single(tm) => tm.show_surprise(anim, frame, session, weekly),
+            UnifiedTrayManager::PerProvider(_) => {
+                // Skip surprise in per-provider mode
+            }
+        }
+    }
+
+    /// Update usage for a single provider display
+    pub fn update_usage(&self, session_percent: f64, weekly_percent: f64, tooltip_name: &str) {
+        match self {
+            UnifiedTrayManager::Single(tm) => tm.update_usage(session_percent, weekly_percent, tooltip_name),
+            UnifiedTrayManager::PerProvider(_) => {
+                // Per-provider mode doesn't use single update
+            }
+        }
+    }
+
+    /// Update merged display for all providers
+    pub fn update_merged(&self, usages: &[ProviderUsage]) {
+        match self {
+            UnifiedTrayManager::Single(tm) => tm.update_merged(usages),
+            UnifiedTrayManager::PerProvider(multi) => {
+                // Update each provider's individual icon
+                for usage in usages {
+                    if let Some(id) = crate::core::ProviderId::from_cli_name(&usage.name) {
+                        multi.update_provider(id, usage.session_percent, usage.weekly_percent);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Create a bar icon showing session and weekly usage with optional overlay
